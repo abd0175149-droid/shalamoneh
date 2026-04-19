@@ -213,18 +213,24 @@ class AuthController {
       final idToken = body['id_token'] as String?;
       final accessToken = body['access_token'] as String?;
 
+      print('📩 [Google Auth] id_token: ${idToken != null ? "${idToken!.substring(0, 20)}..." : "null"}');
+      print('📩 [Google Auth] access_token: ${accessToken != null ? "present" : "null"}');
+
       String? googleId;
       String? email;
       String? name;
       String? picture;
 
       if (idToken != null && idToken.isNotEmpty) {
-        // ─── مسار الموبايل: التحقق من ID Token ───
+        print('🔍 [Google Auth] Verifying id_token via tokeninfo...');
         final googleResponse = await http.get(
           Uri.parse('https://oauth2.googleapis.com/tokeninfo?id_token=$idToken'),
         );
 
+        print('🔍 [Google Auth] tokeninfo status: ${googleResponse.statusCode}');
+
         if (googleResponse.statusCode != 200) {
+          print('❌ [Google Auth] tokeninfo failed: ${googleResponse.body}');
           return _json({'success': false, 'message': 'Google Token غير صالح'}, 401);
         }
 
@@ -234,8 +240,10 @@ class AuthController {
         name = googleData['name'] as String?;
         picture = googleData['picture'] as String?;
 
+        print('✅ [Google Auth] Google data: id=$googleId, email=$email, name=$name');
+
       } else if (accessToken != null && accessToken.isNotEmpty) {
-        // ─── مسار الويب: التحقق من Access Token ───
+        // ... access_token path unchanged
         final userinfoResponse = await http.get(
           Uri.parse('https://www.googleapis.com/oauth2/v3/userinfo'),
           headers: {'Authorization': 'Bearer $accessToken'},
@@ -248,11 +256,10 @@ class AuthController {
           name = userinfo['name'] as String?;
           picture = userinfo['picture'] as String?;
         } else {
-          // Fallback: استخدام البيانات المرسلة من الـ Frontend
           email = body['email'] as String?;
           name = body['name'] as String?;
           picture = body['avatar_url'] as String?;
-          googleId = email; // استخدام الإيميل كمعرف
+          googleId = email;
         }
 
       } else {
@@ -260,12 +267,14 @@ class AuthController {
       }
 
       if (googleId == null || email == null) {
+        print('❌ [Google Auth] Incomplete data: googleId=$googleId, email=$email');
         return _json({'success': false, 'message': 'بيانات Google غير كاملة'}, 400);
       }
 
-      // البحث عن المستخدم بـ google_id أو إنشائه
+      print('🔍 [Google Auth] Looking up user by googleId: $googleId');
       var user = await db.getUserByGoogleId(googleId);
       final isNewUser = user == null;
+      print('🔍 [Google Auth] User found: ${!isNewUser}');
 
       if (user == null) {
         user = await db.createGoogleUser(
@@ -303,7 +312,9 @@ class AuthController {
           'is_new_user': isNewUser,
         }
       });
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ [Google Auth] ERROR: $e');
+      print('❌ [Google Auth] STACK: $stackTrace');
       return _json({'success': false, 'message': 'خطأ في تسجيل Google: $e'}, 500);
     }
   }
