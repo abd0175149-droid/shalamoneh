@@ -733,7 +733,8 @@ class DatabaseService {
   Map<String, dynamic> _rowToMap(ResultRow row, ResultSchema schema) {
     final map = <String, dynamic>{};
     for (var i = 0; i < schema.columns.length; i++) {
-      map[schema.columns[i].columnName] = row[i];
+      final colName = schema.columns[i].columnName ?? 'col_$i';
+      map[colName] = row[i];
     }
     return map;
   }
