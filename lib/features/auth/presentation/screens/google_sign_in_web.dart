@@ -2,62 +2,101 @@ import 'dart:async';
 import 'dart:js' as js;
 import 'dart:js_util' show allowInterop;
 
-/// Google Sign-In Web — استدعاء GIS One Tap عبر JavaScript
-/// يستخدم allowInterop بدل JsFunction.withThis لتجنب null check errors
+/// Google Sign-In Web — استدعاء GIS One Tap مباشرة بدون eval
+/// يستخدم dart:js لاستدعاء google.accounts.id مباشرة
 Future<String?> callGoogleOneTapWeb() async {
   final completer = Completer<String?>();
 
-  // تعريف callbacks على window باستخدام allowInterop (أكثر أماناً)
-  js.context['_dartGoogleCallback'] = allowInterop((dynamic credential) {
-    if (!completer.isCompleted) {
-      completer.complete(credential?.toString());
-    }
-  });
-
-  js.context['_dartGoogleError'] = allowInterop((dynamic error) {
-    if (!completer.isCompleted) {
-      print('Google One Tap error: $error');
-      completer.complete(null);
-    }
-  });
-
-  // استدعاء GIS مباشرة
   try {
-    js.context.callMethod('eval', ['''
-      (function() {
-        try {
-          if (!window.google || !google.accounts || !google.accounts.id) {
-            console.error("GIS not loaded yet — waiting...");
-            window._dartGoogleError("GIS not loaded");
-            return;
-          }
-          google.accounts.id.initialize({
-            client_id: "13399553146-5cj2lbtq691ompj8sejjfm4qk2eqk0t5.apps.googleusercontent.com",
-            callback: function(response) {
-              console.log("GIS credential received!");
-              window._dartGoogleCallback(response.credential);
-            },
-            auto_select: false
-          });
-          google.accounts.id.prompt(function(notification) {
-            if (notification.isNotDisplayed()) {
-              var reason = notification.getNotDisplayedReason();
-              console.log("One Tap not displayed:", reason);
-              window._dartGoogleError("not_displayed: " + reason);
-            } else if (notification.isSkippedMoment()) {
-              var reason = notification.getSkippedReason();
-              console.log("One Tap skipped:", reason);
-              window._dartGoogleError("skipped: " + reason);
-            }
-            // لا شيء إذا isDisplayMoment — ننتظر اختيار المستخدم
-          });
-        } catch(e) {
-          console.error("GIS error:", e);
-          window._dartGoogleError(e.toString());
+    // تحقق من تحميل GIS
+    final google = js.context['google'];
+    if (google == null) {
+      print('❌ GIS not loaded: window.google is null');
+      return null;
+    }
+
+    final accounts = (google as js.JsObject)['accounts'];
+    if (accounts == null) {
+      print('❌ GIS not loaded: google.accounts is null');
+      return null;
+    }
+
+    final id = (accounts as js.JsObject)['id'];
+    if (id == null) {
+      print('❌ GIS not loaded: google.accounts.id is null');
+      return null;
+    }
+
+    final gisId = id as js.JsObject;
+
+    // Callback عند نجاح المصادقة
+    final credentialCallback = allowInterop((dynamic response) {
+      try {
+        final jsResponse = response as js.JsObject;
+        final credential = jsResponse['credential'];
+        print('✅ GIS credential received!');
+        if (!completer.isCompleted) {
+          completer.complete(credential?.toString());
         }
-      })();
-    ''']);
+      } catch (e) {
+        print('❌ Credential callback error: $e');
+        if (!completer.isCompleted) {
+          completer.complete(null);
+        }
+      }
+    });
+
+    // تهيئة GIS
+    gisId.callMethod('initialize', [
+      js.JsObject.jsify({
+        'client_id': '13399553146-5cj2lbtq691ompj8sejjfm4qk2eqk0t5.apps.googleusercontent.com',
+        'callback': credentialCallback,
+        'auto_select': false,
+      }),
+    ]);
+
+    // Callback لحالة العرض
+    final promptCallback = allowInterop((dynamic notification) {
+      try {
+        final n = notification as js.JsObject;
+
+        // تحقق من isNotDisplayed
+        final isNotDisplayed = n.callMethod('isNotDisplayed', []) as bool;
+        if (isNotDisplayed) {
+          final reason = n.callMethod('getNotDisplayedReason', []);
+          print('⚠️ One Tap not displayed: $reason');
+          if (!completer.isCompleted) {
+            completer.complete(null);
+          }
+          return;
+        }
+
+        // تحقق من isSkippedMoment
+        final isSkipped = n.callMethod('isSkippedMoment', []) as bool;
+        if (isSkipped) {
+          final reason = n.callMethod('getSkippedReason', []);
+          print('⚠️ One Tap skipped: $reason');
+          if (!completer.isCompleted) {
+            completer.complete(null);
+          }
+          return;
+        }
+
+        // isDisplayMoment — ننتظر اختيار المستخدم
+        print('👁️ One Tap is displayed, waiting for user...');
+      } catch (e) {
+        print('❌ Prompt callback error: $e');
+        if (!completer.isCompleted) {
+          completer.complete(null);
+        }
+      }
+    });
+
+    // عرض One Tap
+    gisId.callMethod('prompt', [promptCallback]);
+
   } catch (e) {
+    print('❌ GIS initialization error: $e');
     if (!completer.isCompleted) {
       completer.complete(null);
     }
@@ -66,6 +105,9 @@ Future<String?> callGoogleOneTapWeb() async {
   // انتظار callback (مع timeout 60 ثانية)
   return completer.future.timeout(
     const Duration(seconds: 60),
-    onTimeout: () => null,
+    onTimeout: () {
+      print('⏰ GIS timeout — no response in 60 seconds');
+      return null;
+    },
   );
 }
