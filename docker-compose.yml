@@ -1,0 +1,58 @@
+# ═══════════════════════════════════════
+# Shalmoneh — Docker Compose
+# Port 4050 (API) + Port 5434 (PostgreSQL)
+# ═══════════════════════════════════════
+
+services:
+  # ─── PostgreSQL ───
+  shalmoneh-db:
+    image: postgres:16-alpine
+    container_name: shalmoneh-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: shalmoneh
+      POSTGRES_USER: shalmoneh_user
+      POSTGRES_PASSWORD: ${DB_PASS:-Sh4lm0n3h_2026_Pr0d!}
+    ports:
+      - "5434:5432"
+    volumes:
+      - shalmoneh_pgdata:/var/lib/postgresql/data
+      - ./backend/migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/001_init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shalmoneh_user -d shalmoneh"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Backend API ───
+  shalmoneh-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: shalmoneh-api
+    restart: unless-stopped
+    ports:
+      - "4050:4050"
+    environment:
+      PORT: "4050"
+      HOST: "0.0.0.0"
+      DB_HOST: shalmoneh-db
+      DB_PORT: "5432"
+      DB_NAME: shalmoneh
+      DB_USER: shalmoneh_user
+      DB_PASS: ${DB_PASS:-Sh4lm0n3h_2026_Pr0d!}
+      JWT_SECRET: ${JWT_SECRET:-shalmoneh_jwt_prod_CHANGE_ME_2026}
+      JWT_ACCESS_EXPIRY_HOURS: "24"
+      JWT_REFRESH_EXPIRY_DAYS: "90"
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM_NUMBER: ${TWILIO_FROM_NUMBER:-}
+      ADMIN_PHONE: ${ADMIN_PHONE:-+962799999999}
+      API_DOMAIN: shalamoneh.grade.sbs
+    depends_on:
+      shalmoneh-db:
+        condition: service_healthy
+
+volumes:
+  shalmoneh_pgdata:
+    driver: local

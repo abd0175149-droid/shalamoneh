@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+.dart_tool/
+build/
+.packages
+pubspec.lock
+
+# Environment & Secrets
+.env
+*.env.local
+*.env.production
+backend/.env
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Flutter/Dart
+*.g.dart
+*.freezed.dart
+*.mocks.dart
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Firebase
+google-services.json
+GoogleService-Info.plist
+firebase_app_id_file.json
+
+# Android keystore
+*.jks
+*.keystore
+key.properties
+
+# Build artifacts
+/build/
+/backend/.dart_tool/
+*.exe
+
+# Gemini/AI
+.gemini/

@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>شلمونة — لوحة التحكم</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap');
+
+        :root {
+            --primary: #FFD400;
+            --bg: #0a0a0a;
+            --surface: #1a1a1a;
+            --card: #242424;
+            --text: #ffffff;
+            --text2: #a0a0a0;
+            --success: #4CAF50;
+            --error: #E53935;
+            --warning: #FF9800;
+            --radius: 16px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Tajawal', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }
+
+        /* ─── Sidebar ─── */
+        .sidebar {
+            position: fixed;
+            right: 0;
+            top: 0;
+            width: 260px;
+            height: 100vh;
+            background: var(--surface);
+            border-left: 1px solid #2a2a2a;
+            padding: 24px 16px;
+            z-index: 100;
+        }
+
+        .sidebar .logo {
+            text-align: center;
+            font-size: 28px;
+            font-weight: 800;
+            color: var(--primary);
+            margin-bottom: 32px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #2a2a2a;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 4px;
+            color: var(--text2);
+            text-decoration: none;
+        }
+        .nav-item:hover, .nav-item.active {
+            background: rgba(255, 212, 0, 0.1);
+            color: var(--primary);
+        }
+        .nav-item .icon { font-size: 20px; width: 28px; text-align: center; }
+        .nav-item .label { font-size: 15px; font-weight: 500; }
+
+        /* ─── Main Content ─── */
+        .main {
+            margin-right: 260px;
+            padding: 32px;
+        }
+
+        .page-title {
+            font-size: 28px;
+            font-weight: 800;
+            margin-bottom: 24px;
+        }
+
+        /* ─── Stats Cards ─── */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+
+        .stat-card {
+            background: var(--card);
+            border-radius: var(--radius);
+            padding: 24px;
+            position: relative;
+            overflow: hidden;
+        }
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 4px;
+            height: 100%;
+            background: var(--primary);
+            border-radius: 0 var(--radius) var(--radius) 0;
+        }
+        .stat-card .stat-icon { font-size: 32px; margin-bottom: 12px; }
+        .stat-card .stat-value { font-size: 32px; font-weight: 800; color: var(--primary); }
+        .stat-card .stat-label { font-size: 14px; color: var(--text2); margin-top: 4px; }
+
+        /* ─── Table ─── */
+        .data-table {
+            background: var(--card);
+            border-radius: var(--radius);
+            overflow: hidden;
+            margin-bottom: 24px;
+        }
+        .table-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 24px;
+            border-bottom: 1px solid #333;
+        }
+        .table-header h3 { font-size: 18px; font-weight: 700; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th {
+            text-align: right;
+            padding: 14px 24px;
+            font-size: 13px;
+            color: var(--text2);
+            font-weight: 600;
+            border-bottom: 1px solid #333;
+        }
+        td {
+            padding: 14px 24px;
+            font-size: 14px;
+            border-bottom: 1px solid #1e1e1e;
+        }
+        tr:hover { background: rgba(255, 212, 0, 0.03); }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 700;
+        }
+        .badge-success { background: rgba(76,175,80,0.15); color: var(--success); }
+        .badge-warning { background: rgba(255,152,0,0.15); color: var(--warning); }
+        .badge-error { background: rgba(229,57,53,0.15); color: var(--error); }
+        .badge-info { background: rgba(255,212,0,0.15); color: var(--primary); }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            font-family: 'Tajawal', sans-serif;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+        .btn-primary { background: var(--primary); color: #000; }
+        .btn-primary:hover { background: #ffe14d; transform: translateY(-1px); }
+        .btn-sm { padding: 5px 12px; font-size: 12px; }
+
+        /* ─── Loading ─── */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--text2);
+        }
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #333;
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 16px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ─── Login ─── */
+        .login-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .login-box {
+            background: var(--card);
+            border-radius: var(--radius);
+            padding: 48px;
+            width: 400px;
+            text-align: center;
+        }
+        .login-box h1 { color: var(--primary); font-size: 36px; margin-bottom: 8px; }
+        .login-box p { color: var(--text2); margin-bottom: 32px; }
+        .login-box input {
+            width: 100%;
+            padding: 14px 16px;
+            border: 1px solid #333;
+            border-radius: 12px;
+            background: var(--surface);
+            color: var(--text);
+            font-family: 'Tajawal', sans-serif;
+            font-size: 15px;
+            margin-bottom: 16px;
+            outline: none;
+            direction: ltr;
+            text-align: center;
+            letter-spacing: 4px;
+        }
+        .login-box input:focus { border-color: var(--primary); }
+        .login-box .btn { width: 100%; padding: 14px; font-size: 16px; }
+
+        /* ─── Toast ─── */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: var(--card);
+            border: 1px solid var(--primary);
+            padding: 14px 24px;
+            border-radius: 12px;
+            transition: transform 0.3s;
+            z-index: 1000;
+        }
+        .toast.show { transform: translateX(-50%) translateY(0); }
+
+        /* ─── Responsive ─── */
+        @media (max-width: 768px) {
+            .sidebar { display: none; }
+            .main { margin-right: 0; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="app">
+    <!-- Login Screen -->
+    <div class="login-container" id="loginScreen">
+        <div class="login-box">
+            <h1>🥤 شلمونة</h1>
+            <p>لوحة تحكم الأدمن</p>
+            <input type="tel" id="loginPhone" placeholder="رقم الهاتف" maxlength="15">
+            <input type="text" id="loginPin" placeholder="رمز PIN" maxlength="6" style="display:none;">
+            <button class="btn btn-primary" id="loginBtn" onclick="handleLogin()">دخول</button>
+            <p id="loginError" style="color: #E53935; margin-top: 12px; display: none;"></p>
+        </div>
+    </div>
+
+    <!-- Dashboard -->
+    <div id="dashboard" style="display: none;">
+        <nav class="sidebar">
+            <div class="logo">🥤 شلمونة</div>
+            <a class="nav-item active" onclick="showPage('home')">
+                <span class="icon">📊</span>
+                <span class="label">الرئيسية</span>
+            </a>
+            <a class="nav-item" onclick="showPage('orders')">
+                <span class="icon">🛒</span>
+                <span class="label">الطلبات</span>
+            </a>
+            <a class="nav-item" onclick="showPage('products')">
+                <span class="icon">🥤</span>
+                <span class="label">المنتجات</span>
+            </a>
+            <a class="nav-item" onclick="showPage('users')">
+                <span class="icon">👥</span>
+                <span class="label">المستخدمون</span>
+            </a>
+            <a class="nav-item" onclick="showPage('categories')">
+                <span class="icon">📂</span>
+                <span class="label">التصنيفات</span>
+            </a>
+            <div style="position:absolute;bottom:24px;right:16px;left:16px;">
+                <a class="nav-item" onclick="logout()" style="color: #E53935;">
+                    <span class="icon">🚪</span>
+                    <span class="label">خروج</span>
+                </a>
+            </div>
+        </nav>
+
+        <main class="main" id="mainContent">
+            <!-- يتم ملؤها ديناميكياً -->
+        </main>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = window.location.origin + '/api';
+let token = localStorage.getItem('admin_token') || '';
+
+// ══════════════════════════════════════
+//  Auth
+// ══════════════════════════════════════
+let loginStep = 'phone';
+
+function handleLogin() {
+    if (loginStep === 'phone') {
+        const phone = document.getElementById('loginPhone').value.trim();
+        if (!phone) return showError('أدخل رقم الهاتف');
+
+        fetch(`${API}/auth/send-otp`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({phone})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                loginStep = 'otp';
+                document.getElementById('loginPin').style.display = 'block';
+                document.getElementById('loginBtn').textContent = 'تحقق';
+                // Dev mode: show OTP
+                if (data.data && data.data.otp) {
+                    document.getElementById('loginPin').value = data.data.otp;
+                }
+                showToast('تم إرسال رمز التحقق 📱');
+            } else {
+                showError(data.message);
+            }
+        }).catch(e => showError('خطأ في الاتصال'));
+    } else {
+        const phone = document.getElementById('loginPhone').value.trim();
+        const otp = document.getElementById('loginPin').value.trim();
+
+        fetch(`${API}/auth/verify-otp`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({phone, otp})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                token = data.data.access_token;
+                localStorage.setItem('admin_token', token);
+                showDashboard();
+            } else {
+                showError(data.message);
+            }
+        }).catch(e => showError('خطأ في الاتصال'));
+    }
+}
+
+function showError(msg) {
+    const el = document.getElementById('loginError');
+    el.textContent = msg;
+    el.style.display = 'block';
+}
+
+function logout() {
+    token = '';
+    localStorage.removeItem('admin_token');
+    document.getElementById('dashboard').style.display = 'none';
+    document.getElementById('loginScreen').style.display = 'flex';
+    loginStep = 'phone';
+}
+
+// ══════════════════════════════════════
+//  Dashboard
+// ══════════════════════════════════════
+function showDashboard() {
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'block';
+    showPage('home');
+}
+
+function api(path) {
+    return fetch(`${API}${path}`, {
+        headers: {'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json'}
+    }).then(r => {
+        if (r.status === 401) { logout(); throw new Error('غير مصرح'); }
+        return r.json();
+    });
+}
+
+function apiPost(path, body) {
+    return fetch(`${API}${path}`, {
+        method: 'POST',
+        headers: {'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json'},
+        body: JSON.stringify(body)
+    }).then(r => r.json());
+}
+
+function apiPut(path, body) {
+    return fetch(`${API}${path}`, {
+        method: 'PUT',
+        headers: {'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json'},
+        body: JSON.stringify(body)
+    }).then(r => r.json());
+}
+
+// ══════════════════════════════════════
+//  Pages
+// ══════════════════════════════════════
+function showPage(page) {
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    event?.target?.closest?.('.nav-item')?.classList.add('active');
+
+    const main = document.getElementById('mainContent');
+    main.innerHTML = '<div class="loading"><div class="spinner"></div>جاري التحميل...</div>';
+
+    switch(page) {
+        case 'home': loadHome(); break;
+        case 'orders': loadOrders(); break;
+        case 'products': loadProducts(); break;
+        case 'users': loadUsers(); break;
+        case 'categories': loadCategories(); break;
+    }
+}
+
+async function loadHome() {
+    try {
+        const stats = await api('/admin/stats');
+        const d = stats.data;
+        document.getElementById('mainContent').innerHTML = `
+            <h1 class="page-title">📊 لوحة التحكم</h1>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">👥</div>
+                    <div class="stat-value">${d.total_users || 0}</div>
+                    <div class="stat-label">إجمالي المستخدمين</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">🛒</div>
+                    <div class="stat-value">${d.total_orders || 0}</div>
+                    <div class="stat-label">إجمالي الطلبات</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">💰</div>
+                    <div class="stat-value">${Number(d.total_revenue || 0).toFixed(2)} JOD</div>
+                    <div class="stat-label">إجمالي الإيرادات</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">📦</div>
+                    <div class="stat-value">${d.today_orders || 0}</div>
+                    <div class="stat-label">طلبات اليوم</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">🔥</div>
+                    <div class="stat-value">${Number(d.today_revenue || 0).toFixed(2)} JOD</div>
+                    <div class="stat-label">إيرادات اليوم</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">🥤</div>
+                    <div class="stat-value">${d.active_products || 0}</div>
+                    <div class="stat-label">المنتجات النشطة</div>
+                </div>
+            </div>`;
+    } catch(e) { document.getElementById('mainContent').innerHTML = '<p>خطأ في التحميل</p>'; }
+}
+
+async function loadOrders() {
+    try {
+        const res = await api('/admin/orders');
+        const orders = res.data || [];
+        const statusMap = {
+            pending: {label: 'بانتظار', class: 'badge-warning'},
+            confirmed: {label: 'مؤكد', class: 'badge-info'},
+            preparing: {label: 'تحضير', class: 'badge-warning'},
+            ready: {label: 'جاهز', class: 'badge-success'},
+            completed: {label: 'مكتمل', class: 'badge-success'},
+            cancelled: {label: 'ملغي', class: 'badge-error'}
+        };
+        const rows = orders.map(o => {
+            const s = statusMap[o.status] || {label: o.status, class: 'badge-info'};
+            return `<tr>
+                <td>${o.order_number || '-'}</td>
+                <td>${o.user_name || o.user_phone || '-'}</td>
+                <td>${o.branch_name || '-'}</td>
+                <td>${Number(o.total || 0).toFixed(2)} JOD</td>
+                <td><span class="badge ${s.class}">${s.label}</span></td>
+                <td>
+                    <select onchange="updateOrderStatus('${o.id}', this.value)" style="background:var(--surface);color:var(--text);border:1px solid #333;padding:4px 8px;border-radius:8px;font-family:Tajawal">
+                        ${['pending','confirmed','preparing','ready','completed','cancelled'].map(st =>
+                            `<option value="${st}" ${o.status===st?'selected':''}>${statusMap[st]?.label||st}</option>`
+                        ).join('')}
+                    </select>
+                </td>
+                <td>${new Date(o.created_at).toLocaleDateString('ar')}</td>
+            </tr>`;
+        }).join('');
+
+        document.getElementById('mainContent').innerHTML = `
+            <h1 class="page-title">🛒 الطلبات (${orders.length})</h1>
+            <div class="data-table">
+                <table>
+                    <thead><tr><th>#</th><th>العميل</th><th>الفرع</th><th>المبلغ</th><th>الحالة</th><th>تغيير</th><th>التاريخ</th></tr></thead>
+                    <tbody>${rows || '<tr><td colspan="7" style="text-align:center">لا يوجد طلبات</td></tr>'}</tbody>
+                </table>
+            </div>`;
+    } catch(e) { console.error(e); }
+}
+
+async function updateOrderStatus(id, status) {
+    const res = await apiPut(`/admin/orders/${id}/status`, {status});
+    showToast(res.success ? 'تم تحديث الحالة ✅' : res.message);
+}
+
+async function loadProducts() {
+    try {
+        const res = await api('/admin/products');
+        const products = res.data || [];
+        const rows = products.map(p => `
+            <tr>
+                <td>${p.name}</td>
+                <td>${p.category_name || '-'}</td>
+                <td>${Number(p.price_s||0).toFixed(2)}</td>
+                <td>${Number(p.price_m||0).toFixed(2)}</td>
+                <td>${Number(p.price_l||0).toFixed(2)}</td>
+                <td><span class="badge ${p.is_available?'badge-success':'badge-error'}">${p.is_available?'متوفر':'غير متوفر'}</span></td>
+                <td>${p.is_popular?'🔥':''}</td>
+            </tr>`
+        ).join('');
+
+        document.getElementById('mainContent').innerHTML = `
+            <h1 class="page-title">🥤 المنتجات (${products.length})</h1>
+            <div class="data-table">
+                <table>
+                    <thead><tr><th>الاسم</th><th>التصنيف</th><th>S</th><th>M</th><th>L</th><th>التوفر</th><th>شعبي</th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>`;
+    } catch(e) { console.error(e); }
+}
+
+async function loadUsers() {
+    try {
+        const res = await api('/admin/users');
+        const users = res.data || [];
+        const rows = users.map(u => `
+            <tr>
+                <td>${u.name || 'بدون اسم'}</td>
+                <td dir="ltr">${u.phone || '-'}</td>
+                <td>${u.email || '-'}</td>
+                <td><span class="badge badge-info">${u.level || 'برونزي'}</span></td>
+                <td>${u.current_points || 0} ⭐</td>
+                <td>${new Date(u.created_at).toLocaleDateString('ar')}</td>
+            </tr>`
+        ).join('');
+
+        document.getElementById('mainContent').innerHTML = `
+            <h1 class="page-title">👥 المستخدمون (${users.length})</h1>
+            <div class="data-table">
+                <table>
+                    <thead><tr><th>الاسم</th><th>الهاتف</th><th>البريد</th><th>المستوى</th><th>النقاط</th><th>التسجيل</th></tr></thead>
+                    <tbody>${rows || '<tr><td colspan="6" style="text-align:center">لا يوجد مستخدمين</td></tr>'}</tbody>
+                </table>
+            </div>`;
+    } catch(e) { console.error(e); }
+}
+
+async function loadCategories() {
+    try {
+        const res = await api('/admin/categories');
+        const cats = res.data || [];
+        const rows = cats.map(c => `
+            <tr>
+                <td>${c.icon || ''} ${c.name}</td>
+                <td>${c.name_en || '-'}</td>
+                <td>${c.sort_order || 0}</td>
+                <td><span class="badge ${c.is_active?'badge-success':'badge-error'}">${c.is_active?'نشط':'معطل'}</span></td>
+            </tr>`
+        ).join('');
+
+        document.getElementById('mainContent').innerHTML = `
+            <h1 class="page-title">📂 التصنيفات (${cats.length})</h1>
+            <div class="data-table">
+                <table>
+                    <thead><tr><th>الاسم</th><th>الاسم EN</th><th>الترتيب</th><th>الحالة</th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>`;
+    } catch(e) { console.error(e); }
+}
+
+// ══════════════════════════════════════
+//  Utils
+// ══════════════════════════════════════
+function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// Auto-login if token exists
+if (token) {
+    api('/auth/profile').then(() => showDashboard()).catch(() => logout());
+}
+</script>
+
+</body>
+</html>
