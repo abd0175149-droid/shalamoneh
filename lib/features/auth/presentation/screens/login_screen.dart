@@ -109,8 +109,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     setState(() => _isGoogleLoading = true);
 
     try {
-      // إنشاء GoogleSignIn instance
-      // ملاحظة: للويب يحتاج Client ID في index.html
       final googleSignIn = GoogleSignIn(
         scopes: ['email', 'profile'],
       );
@@ -119,21 +117,31 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       final account = await googleSignIn.signIn();
 
       if (account == null) {
-        // المستخدم ألغى التسجيل
         if (mounted) setState(() => _isGoogleLoading = false);
         return;
       }
 
-      // الحصول على ID Token
+      // الحصول على tokens
       final auth = await account.authentication;
-      final idToken = auth.idToken;
 
-      if (idToken == null) {
+      // على الويب: idToken يكون null — نستخدم accessToken بدله
+      final token = auth.idToken ?? auth.accessToken;
+
+      if (token == null) {
         throw Exception('لم يتم الحصول على Google Token');
       }
 
-      // إرسال Token للـ Backend
-      final result = await ref.read(authProvider.notifier).signInWithGoogle(idToken);
+      // تحديد نوع التوكن
+      final isAccessToken = auth.idToken == null;
+
+      // إرسال Token + بيانات الحساب للـ Backend
+      final result = await ref.read(authProvider.notifier).signInWithGoogle(
+        token,
+        isAccessToken: isAccessToken,
+        displayName: account.displayName,
+        email: account.email,
+        photoUrl: account.photoUrl,
+      );
 
       if (!mounted) return;
       setState(() => _isGoogleLoading = false);
@@ -145,10 +153,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             backgroundColor: AppColors.success,
           ),
         );
-        // الانتقال يتم تلقائياً عبر AuthGate
-        if (result.isNewUser) {
-          widget.onSendOTP('', '', ''); // trigger navigation
-        }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

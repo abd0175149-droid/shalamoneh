@@ -43,3 +43,5 @@ key.properties
 
 # Gemini/AI
 .gemini/
+
+client_secret_*.json

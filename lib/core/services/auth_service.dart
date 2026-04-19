@@ -92,10 +92,29 @@ class AuthService {
   // ══════════════════════════════════════════
 
   /// تسجيل الدخول عبر Google
-  Future<AuthResult> signInWithGoogle(String idToken) async {
+  Future<AuthResult> signInWithGoogle(
+    String token, {
+    bool isAccessToken = false,
+    String? displayName,
+    String? email,
+    String? photoUrl,
+  }) async {
+    final body = <String, dynamic>{};
+
+    if (isAccessToken) {
+      // على الويب: نرسل accessToken + بيانات الحساب
+      body['access_token'] = token;
+      if (displayName != null) body['name'] = displayName;
+      if (email != null) body['email'] = email;
+      if (photoUrl != null) body['avatar_url'] = photoUrl;
+    } else {
+      // على الموبايل: نرسل idToken فقط
+      body['id_token'] = token;
+    }
+
     final response = await apiClient.post(
       ApiEndpoints.googleAuth,
-      body: {'id_token': idToken},
+      body: body,
     );
 
     if (response.success && response.data != null) {

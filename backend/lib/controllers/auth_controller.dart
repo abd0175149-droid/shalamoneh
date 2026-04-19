@@ -206,30 +206,58 @@ class AuthController {
   }
 
   /// POST /api/auth/google
-  /// يستقبل idToken من Google Sign-In ويتحقق منه
+  /// يدعم: id_token (موبايل) أو access_token (ويب)
   Future<Response> signInWithGoogle(Request request) async {
     try {
       final body = jsonDecode(await request.readAsString());
       final idToken = body['id_token'] as String?;
+      final accessToken = body['access_token'] as String?;
 
-      if (idToken == null || idToken.isEmpty) {
-        return _json({'success': false, 'message': 'Google ID Token مطلوب'}, 400);
+      String? googleId;
+      String? email;
+      String? name;
+      String? picture;
+
+      if (idToken != null && idToken.isNotEmpty) {
+        // ─── مسار الموبايل: التحقق من ID Token ───
+        final googleResponse = await http.get(
+          Uri.parse('https://oauth2.googleapis.com/tokeninfo?id_token=$idToken'),
+        );
+
+        if (googleResponse.statusCode != 200) {
+          return _json({'success': false, 'message': 'Google Token غير صالح'}, 401);
+        }
+
+        final googleData = jsonDecode(googleResponse.body) as Map<String, dynamic>;
+        googleId = googleData['sub'] as String?;
+        email = googleData['email'] as String?;
+        name = googleData['name'] as String?;
+        picture = googleData['picture'] as String?;
+
+      } else if (accessToken != null && accessToken.isNotEmpty) {
+        // ─── مسار الويب: التحقق من Access Token ───
+        final userinfoResponse = await http.get(
+          Uri.parse('https://www.googleapis.com/oauth2/v3/userinfo'),
+          headers: {'Authorization': 'Bearer $accessToken'},
+        );
+
+        if (userinfoResponse.statusCode == 200) {
+          final userinfo = jsonDecode(userinfoResponse.body) as Map<String, dynamic>;
+          googleId = userinfo['sub'] as String?;
+          email = userinfo['email'] as String?;
+          name = userinfo['name'] as String?;
+          picture = userinfo['picture'] as String?;
+        } else {
+          // Fallback: استخدام البيانات المرسلة من الـ Frontend
+          email = body['email'] as String?;
+          name = body['name'] as String?;
+          picture = body['avatar_url'] as String?;
+          googleId = email; // استخدام الإيميل كمعرف
+        }
+
+      } else {
+        return _json({'success': false, 'message': 'Google Token مطلوب'}, 400);
       }
-
-      // التحقق من Token عبر Google API
-      final googleResponse = await http.get(
-        Uri.parse('https://oauth2.googleapis.com/tokeninfo?id_token=$idToken'),
-      );
-
-      if (googleResponse.statusCode != 200) {
-        return _json({'success': false, 'message': 'Google Token غير صالح'}, 401);
-      }
-
-      final googleData = jsonDecode(googleResponse.body) as Map<String, dynamic>;
-      final googleId = googleData['sub'] as String?;
-      final email = googleData['email'] as String?;
-      final name = googleData['name'] as String?;
-      final picture = googleData['picture'] as String?;
 
       if (googleId == null || email == null) {
         return _json({'success': false, 'message': 'بيانات Google غير كاملة'}, 400);
@@ -252,7 +280,7 @@ class AuthController {
 
       // إصدار JWT tokens
       final accessJwt = JWT({'user_id': userId, 'email': email, 'type': 'access'});
-      final accessToken = accessJwt.sign(
+      final jwtAccessToken = accessJwt.sign(
         SecretKey(EnvConfig.jwtSecret),
         expiresIn: Duration(hours: EnvConfig.jwtAccessExpiryHours),
       );
@@ -269,7 +297,7 @@ class AuthController {
         'success': true,
         'message': isNewUser ? 'تم إنشاء حسابك بنجاح' : 'مرحباً بعودتك',
         'data': {
-          'access_token': accessToken,
+          'access_token': jwtAccessToken,
           'refresh_token': refreshToken,
           'user': _sanitizeUser(user),
           'is_new_user': isNewUser,

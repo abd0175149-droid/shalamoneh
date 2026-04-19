@@ -68,9 +68,21 @@ class AuthNotifier extends Notifier<AuthState> {
   }
 
   /// تسجيل Google
-  Future<AuthResult> signInWithGoogle(String idToken) async {
+  Future<AuthResult> signInWithGoogle(
+    String token, {
+    bool isAccessToken = false,
+    String? displayName,
+    String? email,
+    String? photoUrl,
+  }) async {
     state = state.copyWith(status: AuthStatus.loading);
-    final result = await AuthService.instance.signInWithGoogle(idToken);
+    final result = await AuthService.instance.signInWithGoogle(
+      token,
+      isAccessToken: isAccessToken,
+      displayName: displayName,
+      email: email,
+      photoUrl: photoUrl,
+    );
     if (result.success) {
       state = AuthState(
         status: result.isNewUser ? AuthStatus.newUser : AuthStatus.authenticated,
