@@ -162,13 +162,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ),
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      // ⬇️ DEBUG: طباعة الخطأ + stack trace في Console
+      debugPrint('═══ GOOGLE SIGN-IN ERROR ═══');
+      debugPrint('Error: $e');
+      debugPrint('Stack: $stackTrace');
+      debugPrint('═══════════════════════════');
       if (!mounted) return;
       setState(() => _isGoogleLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('خطأ في Google: $e'),
+          content: Text('خطأ: $e\n${stackTrace.toString().split('\n').take(3).join('\n')}'),
           backgroundColor: AppColors.error,
+          duration: const Duration(seconds: 10),
         ),
       );
     }
