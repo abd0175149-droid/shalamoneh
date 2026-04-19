@@ -49,6 +49,7 @@ void main(List<String> args) async {
   router.post('/api/auth/send-otp', authCtrl.sendOtp);
   router.post('/api/auth/verify-otp', authCtrl.verifyOtp);
   router.post('/api/auth/refresh-token', authCtrl.refreshToken);
+  router.post('/api/auth/google', authCtrl.signInWithGoogle);
 
   // Auth Routes (محمية)
   router.get('/api/auth/profile', Pipeline()

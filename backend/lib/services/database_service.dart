@@ -106,6 +106,66 @@ class DatabaseService {
   }
 
   // ══════════════════════════════════════════
+  //  Google Auth Operations
+  // ══════════════════════════════════════════
+
+  Future<Map<String, dynamic>?> getUserByGoogleId(String googleId) async {
+    final result = await _conn.execute(
+      Sql.named('SELECT * FROM users WHERE google_id = @google_id AND is_active = true'),
+      parameters: {'google_id': googleId},
+    );
+    if (result.isEmpty) return null;
+    return _rowToMap(result.first, result.schema);
+  }
+
+  Future<Map<String, dynamic>> createGoogleUser({
+    required String googleId,
+    required String email,
+    String? name,
+    String? avatarUrl,
+  }) async {
+    // تحقق أولاً: هل يوجد مستخدم بنفس الإيميل؟
+    final existing = await _conn.execute(
+      Sql.named('SELECT * FROM users WHERE email = @email AND is_active = true'),
+      parameters: {'email': email},
+    );
+
+    if (existing.isNotEmpty) {
+      // ربط حساب Google بالحساب الموجود
+      final userId = _rowToMap(existing.first, existing.schema)['id'].toString();
+      await _conn.execute(
+        Sql.named('''UPDATE users SET google_id = @google_id, avatar_url = COALESCE(@avatar_url, avatar_url),
+          name = COALESCE(@name, name), auth_provider = 'google', updated_at = NOW()
+          WHERE id = @id::uuid'''),
+        parameters: {'id': userId, 'google_id': googleId, 'avatar_url': avatarUrl, 'name': name},
+      );
+      return (await getUserById(userId))!;
+    }
+
+    // إنشاء مستخدم جديد
+    final id = generateId();
+    await _conn.execute(
+      Sql.named('''INSERT INTO users (id, email, name, google_id, avatar_url, auth_provider)
+        VALUES (@id::uuid, @email, @name, @google_id, @avatar_url, 'google')'''),
+      parameters: {'id': id, 'email': email, 'name': name, 'google_id': googleId, 'avatar_url': avatarUrl},
+    );
+
+    // مكافأة تسجيل جديد
+    await _conn.execute(
+      Sql.named('''INSERT INTO loyalty_balances (user_id, current_points, total_earned, level)
+        VALUES (@id::uuid, 50, 50, 'برونزي')'''),
+      parameters: {'id': id},
+    );
+    await _conn.execute(
+      Sql.named('''INSERT INTO loyalty_transactions (user_id, points, type, description)
+        VALUES (@id::uuid, 50, 'bonus', 'مكافأة تسجيل جديد 🎉')'''),
+      parameters: {'id': id},
+    );
+
+    return (await getUserById(id))!;
+  }
+
+  // ══════════════════════════════════════════
   //  OTP Operations
   // ══════════════════════════════════════════
 

@@ -1,53 +1,38 @@
-/// نقطة الوصول للـ API — تُعدَّل عند الربط بالـ Backend
+/// نقاط الوصول للـ API — متطابقة مع Backend الحقيقي
 class ApiEndpoints {
   ApiEndpoints._();
 
-  // القاعدة
-  static const String baseUrl = 'https://api.shalmoneh.com/v1';
-
   // ─── المصادقة ───
-  static const String sendOtp = '/auth/otp/send';
-  static const String verifyOtp = '/auth/otp/verify';
-  static const String refreshToken = '/auth/token/refresh';
+  static const String sendOtp = '/auth/send-otp';
+  static const String verifyOtp = '/auth/verify-otp';
+  static const String refreshToken = '/auth/refresh-token';
+  static const String googleAuth = '/auth/google';
   static const String logout = '/auth/logout';
-
-  // ─── المستخدم ───
-  static const String profile = '/user/profile';
-  static const String updateProfile = '/user/profile/update';
-  static const String uploadAvatar = '/user/avatar';
-  static const String deleteAccount = '/user/delete';
+  static const String profile = '/auth/profile';
 
   // ─── المنيو ───
-  static const String categories = '/menu/categories';
-  static const String products = '/menu/products';
-  static String productById(String id) => '/menu/products/$id';
-  static String productsByCategory(String catId) => '/menu/categories/$catId/products';
+  static const String categories = '/categories';
+  static const String products = '/products';
+  static String productById(String id) => '/products/$id';
 
   // ─── الطلبات ───
-  static const String createOrder = '/orders';
-  static const String orderHistory = '/orders/history';
+  static const String orders = '/orders';
   static String orderById(String id) => '/orders/$id';
-  static String orderStatus(String id) => '/orders/$id/status';
-  static String cancelOrder(String id) => '/orders/$id/cancel';
-  static String reorder(String id) => '/orders/$id/reorder';
 
   // ─── الولاء ───
   static const String loyaltyBalance = '/loyalty/balance';
   static const String loyaltyTransactions = '/loyalty/transactions';
   static const String loyaltyRedeem = '/loyalty/redeem';
 
+  // ─── المفضلات ───
+  static const String favorites = '/favorites';
+  static const String favoriteIds = '/favorites/ids';
+  static String removeFavorite(String productId) => '/favorites/$productId';
+
   // ─── الفروع ───
   static const String branches = '/branches';
   static String branchById(String id) => '/branches/$id';
-  static const String nearbyBranches = '/branches/nearby';
-
-  // ─── الإشعارات ───
-  static const String notifications = '/notifications';
-  static const String registerFcm = '/notifications/fcm/register';
 
   // ─── عام ───
-  static const String appConfig = '/config';
-  static const String ourStory = '/about/story';
-  static const String privacyPolicy = '/about/privacy';
-  static const String termsOfService = '/about/terms';
+  static const String health = '/health';
 }

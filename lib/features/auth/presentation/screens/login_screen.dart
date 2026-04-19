@@ -1,24 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shalmoneh_app/core/theme/app_colors.dart';
 import 'package:shalmoneh_app/core/constants/app_sizes.dart';
-import 'package:shalmoneh_app/core/services/otp_service.dart';
+import 'package:shalmoneh_app/features/auth/providers/auth_provider.dart';
 import 'package:shalmoneh_app/shared_widgets/yellow_button.dart';
 
-/// شاشة تسجيل الدخول — إدخال رقم الهاتف + كود الدولة + إرسال OTP حقيقي
-class LoginScreen extends StatefulWidget {
+/// شاشة تسجيل الدخول — OTP + Google Sign-In
+class LoginScreen extends ConsumerStatefulWidget {
   final void Function(String fullPhone, String countryCode, String otp) onSendOTP;
 
   const LoginScreen({super.key, required this.onSendOTP});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _phoneController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
+  bool _isGoogleLoading = false;
 
   final _countries = [
     {'code': '+962', 'flag': '🇯🇴', 'name': 'الأردن', 'digits': 9},
@@ -40,6 +42,7 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
+  /// ─── إرسال OTP عبر API ───
   Future<void> _handleSendOTP() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -48,48 +51,81 @@ class _LoginScreenState extends State<LoginScreen> {
     final fullPhone =
         '${_selectedCountry['code']}${_phoneController.text.trim()}';
 
-    // ─── توليد OTP حقيقي ───
-    final otpResult = OtpService.instance.generateOtp(fullPhone);
+    try {
+      // إرسال OTP عبر Backend API
+      final result = await ref.read(authProvider.notifier).sendOtp(fullPhone);
 
-    // محاكاة وقت الإرسال (في الإنتاج = وقت إرسال SMS)
-    await Future.delayed(const Duration(seconds: 1));
+      if (!mounted) return;
+      setState(() => _isLoading = false);
 
-    if (!mounted) return;
-    setState(() => _isLoading = false);
-
-    if (otpResult.success) {
-      // ─── عرض الرمز في SnackBar (للتطوير فقط) ───
-      // في الإنتاج: الرمز يُرسل عبر SMS ولا يُعرض
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.sms_rounded, color: Colors.white, size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '🔐 رمز التحقق: ${otpResult.otp}  (للتطوير فقط)',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16,
-                    letterSpacing: 2,
+      // في وضع التطوير: عرض OTP
+      final devOtp = result['otp'] as String?;
+      if (devOtp != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.sms_rounded, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '🔐 رمز التحقق: $devOtp  (للتطوير فقط)',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                      letterSpacing: 2,
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
+            backgroundColor: const Color(0xFF2E7D32),
+            duration: const Duration(seconds: 10),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            margin: const EdgeInsets.all(16),
           ),
-          backgroundColor: const Color(0xFF2E7D32),
-          duration: const Duration(seconds: 10),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          margin: const EdgeInsets.all(16),
+        );
+      }
+
+      widget.onSendOTP(fullPhone, _selectedCountry['code'] as String, devOtp ?? '');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('خطأ في الاتصال: $e'),
+          backgroundColor: AppColors.error,
         ),
       );
+    }
+  }
 
-      // الانتقال لشاشة OTP مع تمرير الرمز
-      widget.onSendOTP(fullPhone, _selectedCountry['code'] as String, otpResult.otp!);
+  /// ─── تسجيل Google (placeholder حتى يتم ضبط Client ID) ───
+  Future<void> _handleGoogleSignIn() async {
+    setState(() => _isGoogleLoading = true);
+
+    try {
+      // TODO: ضبط google_sign_in package مع Client ID
+      // سيتم تفعيله بعد إنشاء مشروع Google Cloud Console
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('تسجيل Google قيد الإعداد — سيتم تفعيله قريباً'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('خطأ في Google: $e'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isGoogleLoading = false);
     }
   }
 
@@ -285,7 +321,88 @@ class _LoginScreenState extends State<LoginScreen> {
                   isLoading: _isLoading,
                   onPressed: _isLoading ? null : _handleSendOTP,
                 ),
+
                 const SizedBox(height: AppSizes.paddingLG),
+
+                // ─── فاصل "أو" ───
+                Row(
+                  children: [
+                    Expanded(child: Divider(
+                      color: isDark ? AppColors.darkDivider : AppColors.lightDivider,
+                    )),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: AppSizes.paddingMD),
+                      child: Text('أو', style: theme.textTheme.bodyMedium?.copyWith(
+                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                      )),
+                    ),
+                    Expanded(child: Divider(
+                      color: isDark ? AppColors.darkDivider : AppColors.lightDivider,
+                    )),
+                  ],
+                ),
+
+                const SizedBox(height: AppSizes.paddingLG),
+
+                // ─── زر Google Sign-In ───
+                GestureDetector(
+                  onTap: _isGoogleLoading ? null : _handleGoogleSignIn,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: double.infinity,
+                    height: AppSizes.buttonHeight,
+                    decoration: BoxDecoration(
+                      color: isDark ? AppColors.darkCard : Colors.white,
+                      borderRadius: BorderRadius.circular(AppSizes.radiusLG),
+                      border: Border.all(
+                        color: isDark ? AppColors.darkDivider : const Color(0xFFDDDDDD),
+                        width: 1.5,
+                      ),
+                      boxShadow: isDark ? [] : [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.06),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: _isGoogleLoading
+                        ? const Center(child: SizedBox(
+                            width: 24, height: 24,
+                            child: CircularProgressIndicator(strokeWidth: 2.5),
+                          ))
+                        : Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              // Google "G" Logo
+                              Container(
+                                width: 24, height: 24,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Center(
+                                  child: Text('G', style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF4285F4),
+                                    fontFamily: 'Roboto',
+                                  )),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                'المتابعة عبر Google',
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
+                ),
+
+                const SizedBox(height: AppSizes.paddingXL),
 
                 // ─── شروط الاستخدام ───
                 Center(

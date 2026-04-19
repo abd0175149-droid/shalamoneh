@@ -3,13 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shalmoneh_app/core/theme/app_colors.dart';
 import 'package:shalmoneh_app/core/constants/app_sizes.dart';
 import 'package:shalmoneh_app/core/theme/theme_provider.dart';
+import 'package:shalmoneh_app/features/auth/providers/auth_provider.dart';
 import 'package:shalmoneh_app/features/auth/presentation/screens/our_story_screen.dart';
 import 'package:shalmoneh_app/features/auth/presentation/screens/privacy_policy_screen.dart';
 import 'package:shalmoneh_app/features/loyalty/providers/loyalty_provider.dart';
 import 'package:shalmoneh_app/features/menu/presentation/screens/order_history_screen.dart';
 import 'package:shalmoneh_app/features/menu/presentation/screens/favorites_screen.dart';
 
-/// شاشة الملف الشخصي — بيانات المستخدم + إعدادات + قصة شلمونة
+/// شاشة الملف الشخصي — بيانات المستخدم الحقيقية + إعدادات + قصة شلمونة
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
 
@@ -19,6 +20,8 @@ class ProfileScreen extends ConsumerWidget {
     final isDark = theme.brightness == Brightness.dark;
     final themeNotifier = ref.read(themeModeProvider.notifier);
     final loyalty = ref.watch(loyaltyProvider);
+    final authState = ref.watch(authProvider);
+    final user = authState.user;
 
     return Scaffold(
       body: SafeArea(
@@ -32,14 +35,26 @@ class ProfileScreen extends ConsumerWidget {
               CircleAvatar(
                 radius: 45,
                 backgroundColor: AppColors.primaryYellow.withValues(alpha: 0.15),
-                child: const Icon(Icons.person_rounded, size: 45, color: AppColors.primaryYellow),
+                backgroundImage: user?.avatarUrl != null && user!.avatarUrl!.isNotEmpty
+                    ? NetworkImage(user.avatarUrl!)
+                    : null,
+                child: user?.avatarUrl == null || user!.avatarUrl!.isEmpty
+                    ? const Icon(Icons.person_rounded, size: 45, color: AppColors.primaryYellow)
+                    : null,
               ),
               const SizedBox(height: AppSizes.paddingSM),
-              Text('مستخدم شلمونة', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+              Text(
+                user?.name ?? 'مستخدم شلمونة',
+                style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+              ),
               const SizedBox(height: 4),
-              Text('+962 7XXXXXXXX', style: theme.textTheme.bodyMedium?.copyWith(
-                color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-              )),
+              Text(
+                user?.phone ?? user?.email ?? '',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                ),
+                textDirection: TextDirection.ltr,
+              ),
               const SizedBox(height: AppSizes.paddingSM),
 
               // ─── شارة المستوى ───
@@ -67,7 +82,7 @@ class ProfileScreen extends ConsumerWidget {
                 icon: Icons.edit_rounded,
                 title: 'تعديل البيانات الشخصية',
                 isDark: isDark, theme: theme,
-                onTap: () => _showEditProfileSheet(context, theme, isDark),
+                onTap: () => _showEditProfileSheet(context, theme, isDark, ref),
               ),
               _ProfileOption(
                 icon: Icons.receipt_long_rounded,
@@ -159,9 +174,7 @@ class ProfileScreen extends ConsumerWidget {
 
               // ─── تسجيل الخروج ───
               GestureDetector(
-                onTap: () {
-                  // TODO: تسجيل الخروج
-                },
+                onTap: () => _showLogoutDialog(context, ref),
                 child: Container(
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(vertical: AppSizes.paddingMD),
@@ -195,11 +208,43 @@ class ProfileScreen extends ConsumerWidget {
   }
 
   // ════════════════════════════════════════════
+  //  حوار تأكيد تسجيل الخروج
+  // ════════════════════════════════════════════
+  void _showLogoutDialog(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('تسجيل الخروج'),
+          content: const Text('هل أنت متأكد من تسجيل الخروج؟'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('إلغاء'),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                await ref.read(authProvider.notifier).logout();
+                // سيتم إعادة التوجيه تلقائياً عبر AuthGate
+              },
+              child: const Text('تسجيل الخروج',
+                  style: TextStyle(color: AppColors.error)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ════════════════════════════════════════════
   //  BottomSheet تعديل البيانات الشخصية
   // ════════════════════════════════════════════
-  void _showEditProfileSheet(BuildContext context, ThemeData theme, bool isDark) {
-    final nameCtrl = TextEditingController(text: 'مستخدم شلمونة');
-    final emailCtrl = TextEditingController();
+  void _showEditProfileSheet(BuildContext context, ThemeData theme, bool isDark, WidgetRef ref) {
+    final user = ref.read(authProvider).user;
+    final nameCtrl = TextEditingController(text: user?.name ?? '');
+    final emailCtrl = TextEditingController(text: user?.email ?? '');
 
     showModalBottomSheet(
       context: context,
@@ -268,15 +313,31 @@ class ProfileScreen extends ConsumerWidget {
                   width: double.infinity,
                   height: 52,
                   child: ElevatedButton(
-                    onPressed: () {
-                      // TODO: حفظ عبر API
-                      Navigator.pop(ctx);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('تم حفظ التعديلات ✅'),
-                          backgroundColor: AppColors.success,
-                        ),
-                      );
+                    onPressed: () async {
+                      final data = <String, dynamic>{};
+                      if (nameCtrl.text.trim().isNotEmpty) {
+                        data['name'] = nameCtrl.text.trim();
+                      }
+                      if (emailCtrl.text.trim().isNotEmpty) {
+                        data['email'] = emailCtrl.text.trim();
+                      }
+
+                      if (data.isEmpty) {
+                        Navigator.pop(ctx);
+                        return;
+                      }
+
+                      final success = await ref.read(authProvider.notifier).updateProfile(data);
+
+                      if (ctx.mounted) {
+                        Navigator.pop(ctx);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(success ? 'تم حفظ التعديلات ✅' : 'حدث خطأ!'),
+                            backgroundColor: success ? AppColors.success : AppColors.error,
+                          ),
+                        );
+                      }
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primaryYellow,

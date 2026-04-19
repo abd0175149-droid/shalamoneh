@@ -1,32 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shalmoneh_app/core/theme/app_colors.dart';
 import 'package:shalmoneh_app/core/constants/app_sizes.dart';
-import 'package:shalmoneh_app/core/data/mock_data.dart';
 import 'package:shalmoneh_app/features/menu/data/models/product_model.dart';
 import 'package:shalmoneh_app/features/menu/presentation/screens/product_detail_screen.dart';
+import 'package:shalmoneh_app/features/menu/providers/menu_provider.dart';
 
-/// شاشة المنيو — تصنيفات + شبكة منتجات + بحث (متصلة بالبيانات)
-class MenuScreen extends StatefulWidget {
+/// شاشة المنيو — تصنيفات + شبكة منتجات + بحث — مربوطة بـ API
+class MenuScreen extends ConsumerStatefulWidget {
   const MenuScreen({super.key});
 
   @override
-  State<MenuScreen> createState() => _MenuScreenState();
+  ConsumerState<MenuScreen> createState() => _MenuScreenState();
 }
 
-class _MenuScreenState extends State<MenuScreen> {
-  String _selectedCategoryId = 'cat1';
+class _MenuScreenState extends ConsumerState<MenuScreen> {
+  String? _selectedCategoryId;
   String _searchQuery = '';
   final _searchController = TextEditingController();
-
-  List<ProductModel> get _filteredProducts {
-    List<ProductModel> products;
-    if (_searchQuery.isNotEmpty) {
-      products = MockData.searchProducts(_searchQuery);
-    } else {
-      products = MockData.productsByCategory(_selectedCategoryId);
-    }
-    return products;
-  }
 
   @override
   void dispose() {
@@ -38,6 +29,14 @@ class _MenuScreenState extends State<MenuScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final categoriesAsync = ref.watch(categoriesProvider);
+
+    // فلتر المنتجات
+    final filter = ProductFilter(
+      categoryId: _searchQuery.isEmpty ? _selectedCategoryId : null,
+      search: _searchQuery.isNotEmpty ? _searchQuery : null,
+    );
+    final productsAsync = ref.watch(productsProvider(filter));
 
     return Scaffold(
       body: SafeArea(
@@ -76,52 +75,63 @@ class _MenuScreenState extends State<MenuScreen> {
             ),
             const SizedBox(height: AppSizes.paddingSM),
 
-            // ─── تصنيفات ───
+            // ─── تصنيفات من API ───
             if (_searchQuery.isEmpty)
-              SizedBox(
-                height: 44,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: AppSizes.paddingMD),
-                  separatorBuilder: (_, __) => const SizedBox(width: AppSizes.paddingSM),
-                  itemCount: MockData.categories.length,
-                  itemBuilder: (context, index) {
-                    final cat = MockData.categories[index];
-                    final isSelected = _selectedCategoryId == cat.id;
-                    return GestureDetector(
-                      onTap: () => setState(() => _selectedCategoryId = cat.id),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        padding: const EdgeInsets.symmetric(horizontal: AppSizes.paddingMD),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? AppColors.primaryYellow
-                              : (isDark ? AppColors.darkCard : AppColors.lightCard),
-                          borderRadius: BorderRadius.circular(AppSizes.radiusFull),
-                          border: isSelected ? null : Border.all(
-                            color: isDark ? AppColors.darkDivider : AppColors.lightDivider,
+              categoriesAsync.when(
+                data: (categories) => SizedBox(
+                  height: 44,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: AppSizes.paddingMD),
+                    separatorBuilder: (_, __) => const SizedBox(width: AppSizes.paddingSM),
+                    itemCount: categories.length,
+                    itemBuilder: (context, index) {
+                      final cat = categories[index];
+                      final isSelected =
+                          _selectedCategoryId == cat.id ||
+                          (_selectedCategoryId == null && index == 0);
+                      return GestureDetector(
+                        onTap: () => setState(() => _selectedCategoryId = cat.id),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          padding: const EdgeInsets.symmetric(horizontal: AppSizes.paddingMD),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? AppColors.primaryYellow
+                                : (isDark ? AppColors.darkCard : AppColors.lightCard),
+                            borderRadius: BorderRadius.circular(AppSizes.radiusFull),
+                            border: isSelected ? null : Border.all(
+                              color: isDark ? AppColors.darkDivider : AppColors.lightDivider,
+                            ),
                           ),
-                        ),
-                        child: Center(
-                          child: Text(
-                            '${cat.icon} ${cat.name}',
-                            style: theme.textTheme.labelMedium?.copyWith(
-                              color: isSelected ? AppColors.onPrimary : null,
-                              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                          child: Center(
+                            child: Text(
+                              '${cat.icon} ${cat.name}',
+                              style: theme.textTheme.labelMedium?.copyWith(
+                                color: isSelected ? AppColors.onPrimary : null,
+                                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    );
-                  },
+                      );
+                    },
+                  ),
                 ),
+                loading: () => const SizedBox(
+                  height: 44,
+                  child: Center(child: CircularProgressIndicator(color: AppColors.primaryYellow)),
+                ),
+                error: (e, _) => const SizedBox.shrink(),
               ),
             const SizedBox(height: AppSizes.paddingSM),
 
-            // ─── شبكة المنتجات ───
+            // ─── شبكة المنتجات من API ───
             Expanded(
-              child: _filteredProducts.isEmpty
-                  ? Center(
+              child: productsAsync.when(
+                data: (products) {
+                  if (products.isEmpty) {
+                    return Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -131,36 +141,56 @@ class _MenuScreenState extends State<MenuScreen> {
                           Text('لا توجد نتائج', style: theme.textTheme.titleMedium),
                         ],
                       ),
-                    )
-                  : GridView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: AppSizes.paddingMD),
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        crossAxisSpacing: AppSizes.menuGridSpacing,
-                        mainAxisSpacing: AppSizes.menuGridSpacing,
-                        childAspectRatio: 0.72,
-                      ),
-                      itemCount: _filteredProducts.length,
-                      itemBuilder: (context, index) {
-                        final product = _filteredProducts[index];
-                        return _MenuProductCard(
-                          product: product,
-                          isDark: isDark,
-                          theme: theme,
-                          onTap: () async {
-                            await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => Directionality(
-                                  textDirection: TextDirection.rtl,
-                                  child: ProductDetailScreen(product: product),
-                                ),
-                              ),
-                            );
-                          },
-                        );
-                      },
+                    );
+                  }
+                  return GridView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: AppSizes.paddingMD),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      crossAxisSpacing: AppSizes.menuGridSpacing,
+                      mainAxisSpacing: AppSizes.menuGridSpacing,
+                      childAspectRatio: 0.72,
                     ),
+                    itemCount: products.length,
+                    itemBuilder: (context, index) {
+                      final product = products[index];
+                      return _MenuProductCard(
+                        product: product,
+                        isDark: isDark,
+                        theme: theme,
+                        onTap: () async {
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => Directionality(
+                                textDirection: TextDirection.rtl,
+                                child: ProductDetailScreen(product: product),
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  );
+                },
+                loading: () => const Center(
+                  child: CircularProgressIndicator(color: AppColors.primaryYellow),
+                ),
+                error: (e, _) => Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.cloud_off_rounded, size: 60, color: Colors.grey),
+                      const SizedBox(height: AppSizes.paddingMD),
+                      Text('خطأ في تحميل المنتجات', style: theme.textTheme.titleMedium),
+                      TextButton(
+                        onPressed: () => ref.invalidate(productsProvider(filter)),
+                        child: const Text('إعادة المحاولة'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
           ],
         ),
@@ -213,13 +243,30 @@ class _MenuProductCard extends StatelessWidget {
                     top: Radius.circular(AppSizes.radiusLG),
                   ),
                 ),
-                child: Center(
-                  child: Icon(
-                    Icons.local_drink_rounded,
-                    size: 50,
-                    color: AppColors.primaryYellow.withValues(alpha: 0.6),
-                  ),
-                ),
+                child: product.imageUrl.isNotEmpty
+                    ? ClipRRect(
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(AppSizes.radiusLG),
+                        ),
+                        child: Image.network(
+                          product.imageUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Center(
+                            child: Icon(
+                              Icons.local_drink_rounded,
+                              size: 50,
+                              color: AppColors.primaryYellow.withValues(alpha: 0.6),
+                            ),
+                          ),
+                        ),
+                      )
+                    : Center(
+                        child: Icon(
+                          Icons.local_drink_rounded,
+                          size: 50,
+                          color: AppColors.primaryYellow.withValues(alpha: 0.6),
+                        ),
+                      ),
               ),
             ),
             // المعلومات

@@ -5,6 +5,7 @@ import 'package:shalmoneh_app/core/theme/app_colors.dart';
 import 'package:shalmoneh_app/core/theme/theme_provider.dart';
 import 'package:shalmoneh_app/core/theme/dark_theme.dart';
 import 'package:shalmoneh_app/core/theme/light_theme.dart';
+import 'package:shalmoneh_app/features/auth/providers/auth_provider.dart';
 import 'package:shalmoneh_app/features/auth/presentation/screens/splash_screen.dart';
 import 'package:shalmoneh_app/features/auth/presentation/screens/welcome_screen.dart';
 import 'package:shalmoneh_app/features/auth/presentation/screens/login_screen.dart';
@@ -59,17 +60,18 @@ class ShalmonehApp extends ConsumerWidget {
 
 // ══════════════════════════════════════════════════════════════
 //  بوابة المصادقة — تدير المسار: Splash → Welcome → Login → OTP → Home
+//  متصلة بـ AuthProvider + Backend API
 // ══════════════════════════════════════════════════════════════
-class AuthGate extends StatefulWidget {
+class AuthGate extends ConsumerStatefulWidget {
   const AuthGate({super.key});
 
   @override
-  State<AuthGate> createState() => _AuthGateState();
+  ConsumerState<AuthGate> createState() => _AuthGateState();
 }
 
 enum AuthScreen { splash, welcome, login, otp, completeProfile, main }
 
-class _AuthGateState extends State<AuthGate> {
+class _AuthGateState extends ConsumerState<AuthGate> {
   AuthScreen _currentScreen = AuthScreen.splash;
   String _phoneNumber = '';
 
@@ -79,6 +81,13 @@ class _AuthGateState extends State<AuthGate> {
 
   @override
   Widget build(BuildContext context) {
+    // مراقبة حالة Auth من Provider
+    ref.listen<AuthState>(authProvider, (prev, next) {
+      if (next.status == AuthStatus.authenticated && _currentScreen != AuthScreen.main) {
+        _goTo(AuthScreen.main);
+      }
+    });
+
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 400),
       transitionBuilder: (child, animation) {
@@ -94,9 +103,13 @@ class _AuthGateState extends State<AuthGate> {
         return SplashScreen(
           key: const ValueKey('splash'),
           onComplete: () {
-            // TODO: تحقق من Token محفوظ
-            // إذا موجود → main، وإلا → welcome
-            _goTo(AuthScreen.welcome);
+            // تحقق من حالة Auth
+            final authState = ref.read(authProvider);
+            if (authState.status == AuthStatus.authenticated) {
+              _goTo(AuthScreen.main);
+            } else {
+              _goTo(AuthScreen.welcome);
+            }
           },
         );
 
@@ -120,9 +133,12 @@ class _AuthGateState extends State<AuthGate> {
           key: const ValueKey('otp'),
           phoneNumber: _phoneNumber,
           onVerified: () {
-            // TODO: إذا مستخدم جديد → completeProfile
-            // إذا مستخدم قديم → main
-            _goTo(AuthScreen.completeProfile);
+            final authState = ref.read(authProvider);
+            if (authState.status == AuthStatus.newUser) {
+              _goTo(AuthScreen.completeProfile);
+            } else {
+              _goTo(AuthScreen.main);
+            }
           },
           onBack: () => _goTo(AuthScreen.login),
         );
@@ -130,8 +146,14 @@ class _AuthGateState extends State<AuthGate> {
       case AuthScreen.completeProfile:
         return CompleteProfileScreen(
           key: const ValueKey('complete'),
-          onComplete: () => _goTo(AuthScreen.main),
-          onSkip: () => _goTo(AuthScreen.main),
+          onComplete: () {
+            ref.read(authProvider.notifier).confirmProfileComplete();
+            _goTo(AuthScreen.main);
+          },
+          onSkip: () {
+            ref.read(authProvider.notifier).confirmProfileComplete();
+            _goTo(AuthScreen.main);
+          },
         );
 
       case AuthScreen.main:

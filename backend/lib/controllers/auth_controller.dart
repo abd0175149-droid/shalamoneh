@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:shelf/shelf.dart';
 import 'package:dart_jsonwebtoken/dart_jsonwebtoken.dart';
 import '../config/env_config.dart';
@@ -201,6 +202,81 @@ class AuthController {
       return _json({'success': true, 'message': 'تم تسجيل الخروج'});
     } catch (e) {
       return _json({'success': false, 'message': 'خطأ: $e'}, 500);
+    }
+  }
+
+  /// POST /api/auth/google
+  /// يستقبل idToken من Google Sign-In ويتحقق منه
+  Future<Response> signInWithGoogle(Request request) async {
+    try {
+      final body = jsonDecode(await request.readAsString());
+      final idToken = body['id_token'] as String?;
+
+      if (idToken == null || idToken.isEmpty) {
+        return _json({'success': false, 'message': 'Google ID Token مطلوب'}, 400);
+      }
+
+      // التحقق من Token عبر Google API
+      final googleResponse = await http.get(
+        Uri.parse('https://oauth2.googleapis.com/tokeninfo?id_token=$idToken'),
+      );
+
+      if (googleResponse.statusCode != 200) {
+        return _json({'success': false, 'message': 'Google Token غير صالح'}, 401);
+      }
+
+      final googleData = jsonDecode(googleResponse.body) as Map<String, dynamic>;
+      final googleId = googleData['sub'] as String?;
+      final email = googleData['email'] as String?;
+      final name = googleData['name'] as String?;
+      final picture = googleData['picture'] as String?;
+
+      if (googleId == null || email == null) {
+        return _json({'success': false, 'message': 'بيانات Google غير كاملة'}, 400);
+      }
+
+      // البحث عن المستخدم بـ google_id أو إنشائه
+      var user = await db.getUserByGoogleId(googleId);
+      final isNewUser = user == null;
+
+      if (user == null) {
+        user = await db.createGoogleUser(
+          googleId: googleId,
+          email: email,
+          name: name,
+          avatarUrl: picture,
+        );
+      }
+
+      final userId = user['id'].toString();
+
+      // إصدار JWT tokens
+      final accessJwt = JWT({'user_id': userId, 'email': email, 'type': 'access'});
+      final accessToken = accessJwt.sign(
+        SecretKey(EnvConfig.jwtSecret),
+        expiresIn: Duration(hours: EnvConfig.jwtAccessExpiryHours),
+      );
+
+      final refreshJwt = JWT({'user_id': userId, 'type': 'refresh'});
+      final refreshToken = refreshJwt.sign(
+        SecretKey(EnvConfig.jwtSecret),
+        expiresIn: Duration(days: EnvConfig.jwtRefreshExpiryDays),
+      );
+
+      await db.storeRefreshToken(userId, refreshToken);
+
+      return _json({
+        'success': true,
+        'message': isNewUser ? 'تم إنشاء حسابك بنجاح' : 'مرحباً بعودتك',
+        'data': {
+          'access_token': accessToken,
+          'refresh_token': refreshToken,
+          'user': _sanitizeUser(user),
+          'is_new_user': isNewUser,
+        }
+      });
+    } catch (e) {
+      return _json({'success': false, 'message': 'خطأ في تسجيل Google: $e'}, 500);
     }
   }
 

@@ -1,7 +1,7 @@
 /// نموذج بيانات المستخدم
 class UserModel {
   final String id;
-  final String phone;
+  final String? phone;
   final String? name;
   final String? email;
   final DateTime? birthDate;
@@ -12,7 +12,7 @@ class UserModel {
 
   UserModel({
     required this.id,
-    required this.phone,
+    this.phone,
     this.name,
     this.email,
     this.birthDate,
@@ -24,17 +24,19 @@ class UserModel {
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
     return UserModel(
-      id: json['id'] as String,
-      phone: json['phone'] as String,
+      id: json['id']?.toString() ?? '',
+      phone: json['phone'] as String?,
       name: json['name'] as String?,
       email: json['email'] as String?,
       birthDate: json['birth_date'] != null
-          ? DateTime.parse(json['birth_date'] as String)
+          ? DateTime.tryParse(json['birth_date'].toString())
           : null,
       avatarUrl: json['avatar_url'] as String?,
       level: json['level'] as String? ?? 'bronze',
       points: json['points'] as int? ?? 0,
-      createdAt: DateTime.parse(json['created_at'] as String),
+      createdAt: json['created_at'] != null
+          ? (DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now())
+          : DateTime.now(),
     );
   }
 

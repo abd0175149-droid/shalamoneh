@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shalmoneh_app/core/theme/app_colors.dart';
 import 'package:shalmoneh_app/core/constants/app_sizes.dart';
+import 'package:shalmoneh_app/features/auth/providers/auth_provider.dart';
 import 'package:shalmoneh_app/shared_widgets/yellow_button.dart';
 
 /// شاشة إكمال البروفايل — تظهر فقط للمستخدمين الجدد
-class CompleteProfileScreen extends StatefulWidget {
+class CompleteProfileScreen extends ConsumerStatefulWidget {
   final VoidCallback onComplete;
   final VoidCallback onSkip;
 
@@ -15,10 +17,10 @@ class CompleteProfileScreen extends StatefulWidget {
   });
 
   @override
-  State<CompleteProfileScreen> createState() => _CompleteProfileScreenState();
+  ConsumerState<CompleteProfileScreen> createState() => _CompleteProfileScreenState();
 }
 
-class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
+class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   DateTime? _birthDate;
@@ -54,7 +56,7 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
     }
   }
 
-  void _handleComplete() {
+  Future<void> _handleComplete() async {
     if (_nameController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('الرجاء إدخال اسمك')),
@@ -62,12 +64,43 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
       return;
     }
     setState(() => _isLoading = true);
-    // TODO: حفظ البيانات عبر API
-    Future.delayed(const Duration(seconds: 1), () {
-      if (mounted) {
-        widget.onComplete();
+
+    try {
+      final data = <String, dynamic>{
+        'name': _nameController.text.trim(),
+      };
+      if (_emailController.text.trim().isNotEmpty) {
+        data['email'] = _emailController.text.trim();
       }
-    });
+      if (_birthDate != null) {
+        data['birth_date'] = _birthDate!.toIso8601String().split('T')[0];
+      }
+
+      final success = await ref.read(authProvider.notifier).updateProfile(data);
+
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+
+      if (success) {
+        widget.onComplete();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('حدث خطأ في حفظ البيانات'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('خطأ: $e'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
   }
 
   @override

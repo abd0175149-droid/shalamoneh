@@ -19,11 +19,12 @@ class ApiResponse<T> {
     Map<String, dynamic> json,
     T Function(dynamic)? fromJsonT,
   ) {
+    final rawData = json['data'];
     return ApiResponse(
       success: json['success'] as bool? ?? false,
-      data: json['data'] != null && fromJsonT != null
-          ? fromJsonT(json['data'])
-          : null,
+      data: rawData != null && fromJsonT != null
+          ? fromJsonT(rawData)
+          : rawData as T?,
       message: json['message'] as String?,
       statusCode: json['status_code'] as int?,
       error: json['error'] != null

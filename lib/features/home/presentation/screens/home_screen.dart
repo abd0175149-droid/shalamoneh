@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shalmoneh_app/core/theme/app_colors.dart';
 import 'package:shalmoneh_app/core/constants/app_sizes.dart';
-import 'package:shalmoneh_app/core/data/mock_data.dart';
 import 'package:shalmoneh_app/features/menu/data/models/product_model.dart';
 import 'package:shalmoneh_app/features/menu/presentation/screens/product_detail_screen.dart';
 import 'package:shalmoneh_app/features/menu/providers/favorites_provider.dart';
+import 'package:shalmoneh_app/features/menu/providers/menu_provider.dart';
+import 'package:shalmoneh_app/features/auth/providers/auth_provider.dart';
 
-/// الشاشة الرئيسية — بانر + نقاط + تصنيفات فعّالة + منتجات + مفضلات
+/// الشاشة الرئيسية — بانر + نقاط + تصنيفات + منتجات من API
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -18,33 +19,20 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   String? _selectedCategoryId;
 
-  /// المنتجات المعروضة حسب التصنيف المختار
-  List<ProductModel> get _displayedProducts {
-    List<ProductModel> all;
-    if (_selectedCategoryId == null) {
-      all = MockData.popularProducts;
-    } else {
-      all = MockData.productsByCategory(_selectedCategoryId!);
-    }
-    // أعلى 4 منتجات
-    return all.take(4).toList();
-  }
-
-  /// عنوان قسم المنتجات
-  String get _sectionTitle {
-    if (_selectedCategoryId == null) return '🔥 الأكثر طلباً';
-    final cat = MockData.categories.firstWhere(
-      (c) => c.id == _selectedCategoryId,
-      orElse: () => MockData.categories.first,
-    );
-    return '${cat.icon} ${cat.name}';
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final favoriteIds = ref.watch(favoritesProvider);
+    final categoriesAsync = ref.watch(categoriesProvider);
+    final authState = ref.watch(authProvider);
+
+    // جلب المنتجات حسب الفلتر
+    final filter = ProductFilter(
+      categoryId: _selectedCategoryId,
+      popular: _selectedCategoryId == null,
+    );
+    final productsAsync = ref.watch(productsProvider(filter));
 
     return Scaffold(
       body: SafeArea(
@@ -79,6 +67,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             ),
 
+            // ─── ترحيب بالمستخدم ───
+            if (authState.user?.name != null)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: AppSizes.paddingMD),
+                  child: Text(
+                    'أهلاً ${authState.user!.name} 👋',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+
             // ─── بانر ترويجي ───
             SliverToBoxAdapter(
               child: _BannerCarousel(isDark: isDark),
@@ -89,9 +91,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               child: _LoyaltyMiniBar(isDark: isDark, theme: theme),
             ),
 
-            // ─── التصنيفات (Chips فعّالة) ───
+            // ─── التصنيفات من API ───
             SliverToBoxAdapter(
-              child: _buildCategorySection(theme, isDark),
+              child: categoriesAsync.when(
+                data: (categories) => _buildCategorySection(theme, isDark, categories),
+                loading: () => const Padding(
+                  padding: EdgeInsets.all(AppSizes.paddingMD),
+                  child: Center(child: CircularProgressIndicator(color: AppColors.primaryYellow)),
+                ),
+                error: (e, _) => Padding(
+                  padding: const EdgeInsets.all(AppSizes.paddingMD),
+                  child: Text('خطأ في تحميل التصنيفات: $e'),
+                ),
+              ),
             ),
 
             // ─── عنوان المنتجات ───
@@ -102,8 +114,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
                 child: Row(
                   children: [
-                    Text(_sectionTitle,
-                        style: theme.textTheme.headlineSmall),
+                    Text(
+                      _selectedCategoryId == null ? '🔥 الأكثر طلباً' : '📂 المنتجات',
+                      style: theme.textTheme.headlineSmall,
+                    ),
                     const Spacer(),
                     TextButton(
                       onPressed: () {},
@@ -114,26 +128,57 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             ),
 
-            // ─── شبكة المنتجات ───
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSizes.paddingMD,
-              ),
-              sliver: SliverGrid(
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: AppSizes.menuGridColumns,
-                  crossAxisSpacing: AppSizes.menuGridSpacing,
-                  mainAxisSpacing: AppSizes.menuGridSpacing,
-                  childAspectRatio: _getCardAspectRatio(context),
+            // ─── شبكة المنتجات من API ───
+            productsAsync.when(
+              data: (products) {
+                final displayProducts = products.take(4).toList();
+                return SliverPadding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSizes.paddingMD,
+                  ),
+                  sliver: SliverGrid(
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: AppSizes.menuGridColumns,
+                      crossAxisSpacing: AppSizes.menuGridSpacing,
+                      mainAxisSpacing: AppSizes.menuGridSpacing,
+                      childAspectRatio: _getCardAspectRatio(context),
+                    ),
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final product = displayProducts[index];
+                        final isFav = favoriteIds.contains(product.id);
+                        return _buildProductCard(
+                            product, isFav, theme, isDark, context);
+                      },
+                      childCount: displayProducts.length,
+                    ),
+                  ),
+                );
+              },
+              loading: () => const SliverToBoxAdapter(
+                child: Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(40),
+                    child: CircularProgressIndicator(color: AppColors.primaryYellow),
+                  ),
                 ),
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    final product = _displayedProducts[index];
-                    final isFav = favoriteIds.contains(product.id);
-                    return _buildProductCard(
-                        product, isFav, theme, isDark, context);
-                  },
-                  childCount: _displayedProducts.length,
+              ),
+              error: (e, _) => SliverToBoxAdapter(
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(40),
+                    child: Column(
+                      children: [
+                        const Icon(Icons.cloud_off_rounded, size: 48, color: Colors.grey),
+                        const SizedBox(height: 8),
+                        Text('خطأ في تحميل المنتجات', style: theme.textTheme.bodyMedium),
+                        TextButton(
+                          onPressed: () => ref.invalidate(productsProvider(filter)),
+                          child: const Text('إعادة المحاولة'),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -157,15 +202,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   // ════════════════════════════════════════════
-  //  قسم التصنيفات (Chips فعّالة)
+  //  قسم التصنيفات (من API)
   // ════════════════════════════════════════════
-  Widget _buildCategorySection(ThemeData theme, bool isDark) {
+  Widget _buildCategorySection(ThemeData theme, bool isDark, List<CategoryModel> apiCategories) {
+    // إضافة "الكل" في البداية
     final categories = [
       {'id': null, 'icon': Icons.whatshot_rounded, 'name': 'الكل', 'color': AppColors.primaryYellow},
-      {'id': 'cat1', 'icon': Icons.local_drink_rounded, 'name': 'عصائر طبيعية', 'color': AppColors.juiceOrange},
-      {'id': 'cat2', 'icon': Icons.blender, 'name': 'مكس شلمونة', 'color': AppColors.primaryYellow},
-      {'id': 'cat3', 'icon': Icons.coffee_rounded, 'name': 'ساخن', 'color': AppColors.hotDrink},
-      {'id': 'cat4', 'icon': Icons.cake_rounded, 'name': 'حلى', 'color': AppColors.dessert},
+      ...apiCategories.map((c) => {
+        'id': c.id,
+        'icon': _getCategoryIcon(c.icon),
+        'name': c.name,
+        'color': _getCategoryColor(c.name),
+      }),
     ];
 
     return Padding(
@@ -274,6 +322,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
+  /// تحويل emoji/icon string لـ IconData
+  IconData _getCategoryIcon(String icon) {
+    switch (icon) {
+      case '🍊': return Icons.local_drink_rounded;
+      case '🥤': return Icons.blender;
+      case '☕': return Icons.coffee_rounded;
+      case '🍰': return Icons.cake_rounded;
+      default: return Icons.restaurant_rounded;
+    }
+  }
+
+  /// لون حسب اسم التصنيف
+  Color _getCategoryColor(String name) {
+    if (name.contains('عصير')) return AppColors.juiceOrange;
+    if (name.contains('مكس') || name.contains('شلمونة')) return AppColors.primaryYellow;
+    if (name.contains('ساخن')) return AppColors.hotDrink;
+    if (name.contains('حلى')) return AppColors.dessert;
+    return AppColors.primaryYellow;
+  }
+
   // ════════════════════════════════════════════
   //  كارد المنتج (محسّن + مفضلة)
   // ════════════════════════════════════════════
@@ -322,12 +390,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         top: Radius.circular(AppSizes.radiusLG),
                       ),
                     ),
-                    child: Center(
-                      child: Icon(Icons.local_drink_rounded,
-                          size: 36,
-                          color: AppColors.primaryYellow
-                              .withValues(alpha: 0.6)),
-                    ),
+                    child: product.imageUrl.isNotEmpty
+                        ? ClipRRect(
+                            borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(AppSizes.radiusLG),
+                            ),
+                            child: Image.network(
+                              product.imageUrl,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Center(
+                                child: Icon(Icons.local_drink_rounded,
+                                    size: 36,
+                                    color: AppColors.primaryYellow
+                                        .withValues(alpha: 0.6)),
+                              ),
+                            ),
+                          )
+                        : Center(
+                            child: Icon(Icons.local_drink_rounded,
+                                size: 36,
+                                color: AppColors.primaryYellow
+                                    .withValues(alpha: 0.6)),
+                          ),
                   ),
                   // زر المفضلة ❤️
                   Positioned(
@@ -381,7 +465,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ),
                   const SizedBox(width: 4),
                   Text(
-                    '${product.priceM.toStringAsFixed(2)}',
+                    product.priceM.toStringAsFixed(2),
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: AppColors.primaryYellow,
                       fontWeight: FontWeight.w900,

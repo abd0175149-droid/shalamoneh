@@ -1,13 +1,14 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shalmoneh_app/core/theme/app_colors.dart';
 import 'package:shalmoneh_app/core/constants/app_sizes.dart';
-import 'package:shalmoneh_app/core/services/otp_service.dart';
+import 'package:shalmoneh_app/features/auth/providers/auth_provider.dart';
 import 'package:shalmoneh_app/shared_widgets/yellow_button.dart';
 
-/// شاشة التحقق OTP — 6 حقول + تحقق حقيقي + مؤقت + إعادة إرسال
-class OtpScreen extends StatefulWidget {
+/// شاشة التحقق OTP — 6 حقول + تحقق عبر Backend API
+class OtpScreen extends ConsumerStatefulWidget {
   final String phoneNumber;
   final VoidCallback onVerified;
   final VoidCallback onBack;
@@ -20,10 +21,10 @@ class OtpScreen extends StatefulWidget {
   });
 
   @override
-  State<OtpScreen> createState() => _OtpScreenState();
+  ConsumerState<OtpScreen> createState() => _OtpScreenState();
 }
 
-class _OtpScreenState extends State<OtpScreen> {
+class _OtpScreenState extends ConsumerState<OtpScreen> {
   final List<TextEditingController> _controllers =
       List.generate(6, (_) => TextEditingController());
   final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
@@ -33,7 +34,6 @@ class _OtpScreenState extends State<OtpScreen> {
   Timer? _timer;
   bool _canResend = false;
   String? _errorMessage;
-  int? _remainingAttempts;
 
   @override
   void initState() {
@@ -78,7 +78,6 @@ class _OtpScreenState extends State<OtpScreen> {
   String get _enteredOTP => _controllers.map((c) => c.text).join();
 
   void _onDigitChanged(int index, String value) {
-    // مسح رسالة الخطأ عند البدء بالكتابة
     if (_errorMessage != null) {
       setState(() => _errorMessage = null);
     }
@@ -96,6 +95,7 @@ class _OtpScreenState extends State<OtpScreen> {
     }
   }
 
+  /// ─── التحقق عبر Backend API ───
   Future<void> _verifyOTP() async {
     if (_isLoading) return;
 
@@ -107,41 +107,29 @@ class _OtpScreenState extends State<OtpScreen> {
       _errorMessage = null;
     });
 
-    // محاكاة وقت الشبكة
-    await Future.delayed(const Duration(milliseconds: 800));
+    try {
+      final result = await ref.read(authProvider.notifier).verifyOtp(
+        widget.phoneNumber,
+        enteredCode,
+      );
 
-    if (!mounted) return;
+      if (!mounted) return;
+      setState(() => _isLoading = false);
 
-    // ─── التحقق الحقيقي عبر OtpService ───
-    final result = OtpService.instance.verifyOtp(
-      widget.phoneNumber,
-      enteredCode,
-    );
-
-    setState(() => _isLoading = false);
-
-    if (result.success) {
-      // ✅ نجاح — أنيميشن ثم انتقال
-      _showSuccessAndNavigate();
-    } else {
-      // ❌ فشل — عرض الخطأ
-      setState(() {
-        _errorMessage = result.message;
-        _remainingAttempts = result.remainingAttempts;
-      });
-
-      // مسح الحقول وإعادة التركيز
-      _clearFields();
-
-      // اهتزاز (vibration) عند الخطأ
-      HapticFeedback.heavyImpact();
-
-      // إذا انتهت المحاولات أو الصلاحية → إعادة إرسال تلقائية
-      if (result.error == OtpError.maxAttempts ||
-          result.error == OtpError.expired ||
-          result.error == OtpError.noActiveOtp) {
-        setState(() => _canResend = true);
+      if (result.success) {
+        _showSuccessAndNavigate();
+      } else {
+        setState(() => _errorMessage = result.message);
+        _clearFields();
+        HapticFeedback.heavyImpact();
       }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'خطأ في الاتصال بالسيرفر';
+      });
+      _clearFields();
     }
   }
 
@@ -153,7 +141,6 @@ class _OtpScreenState extends State<OtpScreen> {
   }
 
   void _showSuccessAndNavigate() async {
-    // عرض رسالة نجاح
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -178,54 +165,61 @@ class _OtpScreenState extends State<OtpScreen> {
       );
     }
 
-    // انتظار لرؤية الرسالة ثم الانتقال
     await Future.delayed(const Duration(milliseconds: 800));
     if (mounted) {
       widget.onVerified();
     }
   }
 
-  void _resendOTP() {
+  /// ─── إعادة إرسال OTP عبر API ───
+  void _resendOTP() async {
     if (!_canResend) return;
 
-    // ─── إعادة توليد OTP عبر الخدمة ───
-    final result = OtpService.instance.resendOtp();
-
-    if (result.success) {
+    try {
+      final result = await ref.read(authProvider.notifier).sendOtp(widget.phoneNumber);
       _startTimer();
       _clearFields();
-      setState(() {
-        _errorMessage = null;
-        _remainingAttempts = null;
-      });
+      setState(() => _errorMessage = null);
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.sms_rounded, color: Colors.white, size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '🔐 الرمز الجديد: ${result.otp}  (للتطوير)',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16,
-                    letterSpacing: 2,
+      final devOtp = result['otp'] as String?;
+      if (devOtp != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.sms_rounded, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '🔐 الرمز الجديد: $devOtp  (للتطوير)',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                      letterSpacing: 2,
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
+            backgroundColor: const Color(0xFF2E7D32),
+            duration: const Duration(seconds: 10),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            margin: const EdgeInsets.all(16),
           ),
-          backgroundColor: const Color(0xFF2E7D32),
-          duration: const Duration(seconds: 10),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطأ في إعادة الإرسال: $e'),
+            backgroundColor: AppColors.error,
           ),
-          margin: const EdgeInsets.all(16),
-        ),
-      );
+        );
+      }
     }
   }
 
@@ -391,20 +385,6 @@ class _OtpScreenState extends State<OtpScreen> {
                         ),
                       ),
                     ],
-                  ),
-                ),
-              ],
-
-              // ─── معلومات المحاولات المتبقية ───
-              if (_remainingAttempts != null && _remainingAttempts! > 0) ...[
-                const SizedBox(height: AppSizes.paddingSM),
-                Text(
-                  'المحاولات المتبقية: $_remainingAttempts من ${OtpService.maxAttempts}',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: _remainingAttempts! <= 2
-                        ? AppColors.error
-                        : AppColors.warning,
-                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
