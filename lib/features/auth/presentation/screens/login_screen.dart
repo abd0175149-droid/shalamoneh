@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:js' as js;
+import 'dart:js_util' show promiseToFuture;
 import 'package:shalmoneh_app/core/theme/app_colors.dart';
 import 'package:shalmoneh_app/core/constants/app_sizes.dart';
 import 'package:shalmoneh_app/features/auth/providers/auth_provider.dart';
@@ -106,13 +107,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
-  /// ─── تسجيل Google Sign-In عبر GIS (بدون popup) ───
+  /// ─── تسجيل Google Sign-In عبر GIS One Tap (داخل الصفحة) ───
   Future<void> _handleGoogleSignIn() async {
     setState(() => _isGoogleLoading = true);
 
     try {
-      // استخدام JavaScript interop لاستدعاء GIS مباشرة
-      // هذا يتجنب مشكلة COOP لأنه يستخدم redirect بدل popup
+      // استدعاء GIS One Tap عبر JavaScript (يعرض overlay داخل الصفحة)
       final idToken = await _callGoogleOneTap();
 
       if (idToken == null) {
@@ -153,55 +153,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
-  /// استدعاء Google Identity Services One Tap عبر JS
+  /// استدعاء triggerGoogleSignIn() المعرّفة في index.html
   Future<String?> _callGoogleOneTap() async {
     if (!kIsWeb) return null;
 
-    final completer = Completer<String?>();
-
-    // تعريف callback function في JavaScript
-    js.context['_handleGoogleCredentialResponse'] = js.JsFunction.withThis((_, jsResponse) {
-      final credential = jsResponse['credential'] as String?;
-      if (!completer.isCompleted) {
-        completer.complete(credential);
-      }
-    });
-
-    // استدعاء GIS initialize + prompt
-    js.context.callMethod('eval', ['''
-      if (window.google && google.accounts && google.accounts.id) {
-        google.accounts.id.initialize({
-          client_id: '13399553146-5cj2lbtq691ompj8sejjfm4qk2eqk0t5.apps.googleusercontent.com',
-          callback: window._handleGoogleCredentialResponse,
-          auto_select: false
-        });
-        google.accounts.id.prompt(function(notification) {
-          if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-            // One Tap لم يظهر — نستخدم redirect flow
-            google.accounts.id.renderButton(
-              document.createElement('div'),
-              { theme: 'outline', size: 'large' }
-            );
-            // Fallback: فتح OAuth redirect
-            var url = 'https://accounts.google.com/o/oauth2/v2/auth'
-              + '?client_id=13399553146-5cj2lbtq691ompj8sejjfm4qk2eqk0t5.apps.googleusercontent.com'
-              + '&redirect_uri=' + encodeURIComponent(window.location.origin)
-              + '&response_type=token'
-              + '&scope=email profile'
-              + '&prompt=select_account';
-            window.location.href = url;
-          }
-        });
-      } else {
-        console.error('Google Identity Services not loaded');
-      }
-    ''']);
-
-    // انتظار الاستجابة (مع timeout)
-    return completer.future.timeout(
-      const Duration(seconds: 60),
-      onTimeout: () => null,
-    );
+    try {
+      // استدعاء JS function — تعرض Google One Tap داخل الصفحة
+      final promise = js.context.callMethod('triggerGoogleSignIn', []);
+      // تحويل JS Promise لـ Dart Future
+      final credential = await promiseToFuture<String?>(promise);
+      return credential;
+    } catch (e) {
+      debugPrint('Google One Tap error: $e');
+      return null;
+    }
   }
 
   @override
