@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:js' as js;
-import 'dart:js_util' show promiseToFuture;
 import 'package:shalmoneh_app/core/theme/app_colors.dart';
 import 'package:shalmoneh_app/core/constants/app_sizes.dart';
 import 'package:shalmoneh_app/features/auth/providers/auth_provider.dart';
@@ -153,32 +152,58 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
-  /// استدعاء triggerGoogleSignIn() المعرّفة في index.html
+  /// استدعاء Google One Tap عبر callback بدل Promise
   Future<String?> _callGoogleOneTap() async {
     if (!kIsWeb) return null;
 
-    try {
-      // تحقق أن الدالة موجودة
-      final hasFunc = js.context.hasProperty('triggerGoogleSignIn');
-      if (!hasFunc) {
-        debugPrint('triggerGoogleSignIn not found in window');
-        throw Exception('Google Sign-In غير متاح حالياً. حاول مرة أخرى.');
+    final completer = Completer<String?>();
+
+    // تعريف callback على window — JS سيناديه بالنتيجة
+    js.context['_dartGoogleCallback'] = js.JsFunction.withThis((_, String credential) {
+      if (!completer.isCompleted) {
+        completer.complete(credential);
       }
+    });
 
-      // استدعاء JS function
-      final result = js.context.callMethod('triggerGoogleSignIn', []);
-
-      if (result == null) {
-        throw Exception('Google Sign-In لم يعمل. تأكد من تحميل الصفحة كاملة.');
+    js.context['_dartGoogleError'] = js.JsFunction.withThis((_, String error) {
+      if (!completer.isCompleted) {
+        completer.complete(null);
       }
+    });
 
-      // تحويل JS Promise لـ Dart Future
-      final credential = await promiseToFuture<String>(result);
-      return credential;
-    } catch (e) {
-      debugPrint('Google One Tap error: $e');
-      rethrow;
-    }
+    // استدعاء GIS مباشرة من Dart
+    js.context.callMethod('eval', ['''
+      (function() {
+        if (!window.google || !google.accounts || !google.accounts.id) {
+          console.error("GIS not loaded yet");
+          window._dartGoogleError("GIS not loaded");
+          return;
+        }
+        google.accounts.id.initialize({
+          client_id: "13399553146-5cj2lbtq691ompj8sejjfm4qk2eqk0t5.apps.googleusercontent.com",
+          callback: function(response) {
+            console.log("GIS credential received!");
+            window._dartGoogleCallback(response.credential);
+          },
+          auto_select: false
+        });
+        google.accounts.id.prompt(function(notification) {
+          if (notification.isNotDisplayed()) {
+            console.log("One Tap not displayed:", notification.getNotDisplayedReason());
+            window._dartGoogleError("not_displayed: " + notification.getNotDisplayedReason());
+          } else if (notification.isSkippedMoment()) {
+            console.log("One Tap skipped:", notification.getSkippedReason());
+            window._dartGoogleError("skipped: " + notification.getSkippedReason());
+          }
+        });
+      })();
+    ''']);
+
+    // انتظار callback (مع timeout 60 ثانية)
+    return completer.future.timeout(
+      const Duration(seconds: 60),
+      onTimeout: () => null,
+    );
   }
 
   @override
