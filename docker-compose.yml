@@ -49,6 +49,7 @@ services:
       TWILIO_FROM_NUMBER: ${TWILIO_FROM_NUMBER:-}
       ADMIN_PHONE: ${ADMIN_PHONE:-+962799999999}
       API_DOMAIN: shalamoneh.grade.sbs
+      FIREBASE_WEB_API_KEY: ${FIREBASE_WEB_API_KEY:-}
     depends_on:
       shalmoneh-db:
         condition: service_healthy

@@ -59,4 +59,5 @@ class EnvConfig {
   static String get adminPhone => get('ADMIN_PHONE', '+962799999999');
   static String get adminPin => get('ADMIN_PIN', '123456');
   static String get apiDomain => get('API_DOMAIN', 'localhost');
+  static String get firebaseWebApiKey => get('FIREBASE_WEB_API_KEY', '');
 }

@@ -319,6 +319,91 @@ class AuthController {
     }
   }
 
+  /// POST /api/auth/firebase-phone
+  /// يستقبل Firebase ID Token → يتحقق → يستخرج رقم الهاتف → يصدر JWT
+  Future<Response> signInWithFirebasePhone(Request request) async {
+    try {
+      final body = jsonDecode(await request.readAsString());
+      final firebaseToken = body['firebase_token'] as String?;
+
+      if (firebaseToken == null || firebaseToken.isEmpty) {
+        return _json({'success': false, 'message': 'Firebase token مطلوب'}, 400);
+      }
+
+      print('📩 [Firebase Phone] Received token: ${firebaseToken.substring(0, 20)}...');
+
+      // التحقق من Firebase Token عبر Google Identity Toolkit
+      final verifyResponse = await http.post(
+        Uri.parse(
+          'https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${EnvConfig.firebaseWebApiKey}',
+        ),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'idToken': firebaseToken}),
+      );
+
+      print('🔍 [Firebase Phone] Lookup status: ${verifyResponse.statusCode}');
+
+      if (verifyResponse.statusCode != 200) {
+        print('❌ [Firebase Phone] Lookup failed: ${verifyResponse.body}');
+        return _json({'success': false, 'message': 'Firebase Token غير صالح'}, 401);
+      }
+
+      final data = jsonDecode(verifyResponse.body);
+      final users = data['users'] as List?;
+      if (users == null || users.isEmpty) {
+        return _json({'success': false, 'message': 'مستخدم غير موجود في Firebase'}, 401);
+      }
+
+      final firebaseUser = users[0] as Map<String, dynamic>;
+      final phone = firebaseUser['phoneNumber'] as String?;
+
+      print('✅ [Firebase Phone] Phone: $phone');
+
+      if (phone == null || phone.isEmpty) {
+        return _json({'success': false, 'message': 'رقم الهاتف غير موجود'}, 400);
+      }
+
+      // البحث عن المستخدم أو إنشائه
+      var user = await db.getUserByPhone(phone);
+      final isNewUser = user == null;
+      user ??= await db.createUser(phone);
+
+      print('🔍 [Firebase Phone] User found: ${!isNewUser}, id: ${user['id']}');
+
+      final userId = user['id'].toString();
+
+      // إصدار JWT tokens
+      final accessJwt = JWT({'user_id': userId, 'phone': phone, 'type': 'access'});
+      final accessToken = accessJwt.sign(
+        SecretKey(EnvConfig.jwtSecret),
+        expiresIn: Duration(hours: EnvConfig.jwtAccessExpiryHours),
+      );
+
+      final refreshJwt = JWT({'user_id': userId, 'type': 'refresh'});
+      final refreshToken = refreshJwt.sign(
+        SecretKey(EnvConfig.jwtSecret),
+        expiresIn: Duration(days: EnvConfig.jwtRefreshExpiryDays),
+      );
+
+      await db.storeRefreshToken(userId, refreshToken);
+
+      return _json({
+        'success': true,
+        'message': isNewUser ? 'تم إنشاء حسابك بنجاح' : 'مرحباً بعودتك',
+        'data': {
+          'access_token': accessToken,
+          'refresh_token': refreshToken,
+          'user': _sanitizeUser(user),
+          'is_new_user': isNewUser,
+        }
+      });
+    } catch (e, stackTrace) {
+      print('❌ [Firebase Phone] ERROR: $e');
+      print('❌ [Firebase Phone] STACK: $stackTrace');
+      return _json({'success': false, 'message': 'خطأ: $e'}, 500);
+    }
+  }
+
   Map<String, dynamic> _sanitizeUser(Map<String, dynamic> user) {
     final clean = Map<String, dynamic>.from(user);
     clean.remove('is_admin');

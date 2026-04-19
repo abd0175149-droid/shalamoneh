@@ -50,6 +50,7 @@ void main(List<String> args) async {
   router.post('/api/auth/verify-otp', authCtrl.verifyOtp);
   router.post('/api/auth/refresh-token', authCtrl.refreshToken);
   router.post('/api/auth/google', authCtrl.signInWithGoogle);
+  router.post('/api/auth/firebase-phone', authCtrl.signInWithFirebasePhone);
 
   // Auth Routes (محمية)
   router.get('/api/auth/profile', Pipeline()

@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shalmoneh_app/core/services/auth_service.dart';
 import 'package:shalmoneh_app/features/auth/data/models/user_model.dart';
@@ -48,14 +49,24 @@ class AuthNotifier extends Notifier<AuthState> {
     }
   }
 
-  /// إرسال OTP
-  Future<Map<String, dynamic>> sendOtp(String phone) async {
-    return await AuthService.instance.sendOtp(phone);
+  /// إرسال OTP عبر Firebase
+  Future<void> sendOtp({
+    required String phone,
+    required void Function(String verificationId) onCodeSent,
+    required void Function(String error) onError,
+    void Function(PhoneAuthCredential credential)? onAutoVerified,
+  }) async {
+    await AuthService.instance.sendOtp(
+      phone: phone,
+      onCodeSent: onCodeSent,
+      onError: onError,
+      onAutoVerified: onAutoVerified,
+    );
   }
 
-  /// التحقق من OTP
-  Future<AuthResult> verifyOtp(String phone, String otp) async {
-    final result = await AuthService.instance.verifyOtp(phone, otp);
+  /// التحقق من OTP عبر Firebase → ثم Backend JWT
+  Future<AuthResult> verifyOtp(String verificationId, String otp) async {
+    final result = await AuthService.instance.verifyOtpWithFirebase(verificationId, otp);
     if (result.success) {
       state = AuthState(
         status: result.isNewUser ? AuthStatus.newUser : AuthStatus.authenticated,
@@ -63,6 +74,24 @@ class AuthNotifier extends Notifier<AuthState> {
       );
     } else {
       state = state.copyWith(errorMessage: result.message);
+    }
+    return result;
+  }
+
+  /// التحقق التلقائي (Android) عبر Firebase
+  Future<AuthResult> autoVerify(PhoneAuthCredential credential) async {
+    state = state.copyWith(status: AuthStatus.loading);
+    final result = await AuthService.instance.autoVerifyWithFirebase(credential);
+    if (result.success) {
+      state = AuthState(
+        status: result.isNewUser ? AuthStatus.newUser : AuthStatus.authenticated,
+        user: result.user,
+      );
+    } else {
+      state = AuthState(
+        status: AuthStatus.unauthenticated,
+        errorMessage: result.message,
+      );
     }
     return result;
   }

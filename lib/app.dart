@@ -74,6 +74,7 @@ enum AuthScreen { splash, welcome, login, otp, completeProfile, main }
 class _AuthGateState extends ConsumerState<AuthGate> {
   AuthScreen _currentScreen = AuthScreen.splash;
   String _phoneNumber = '';
+  String _verificationId = '';
 
   void _goTo(AuthScreen screen) {
     setState(() => _currentScreen = screen);
@@ -122,9 +123,19 @@ class _AuthGateState extends ConsumerState<AuthGate> {
       case AuthScreen.login:
         return LoginScreen(
           key: const ValueKey('login'),
-          onSendOTP: (fullPhone, countryCode, otp) {
+          onSendOTP: (fullPhone, countryCode, verificationId) {
             _phoneNumber = fullPhone;
+            _verificationId = verificationId;
             _goTo(AuthScreen.otp);
+          },
+          onAutoVerified: () {
+            // Android auto-verify — تم التحقق تلقائياً
+            final authState = ref.read(authProvider);
+            if (authState.status == AuthStatus.newUser) {
+              _goTo(AuthScreen.completeProfile);
+            } else {
+              _goTo(AuthScreen.main);
+            }
           },
         );
 
@@ -132,6 +143,7 @@ class _AuthGateState extends ConsumerState<AuthGate> {
         return OtpScreen(
           key: const ValueKey('otp'),
           phoneNumber: _phoneNumber,
+          verificationId: _verificationId,
           onVerified: () {
             final authState = ref.read(authProvider);
             if (authState.status == AuthStatus.newUser) {

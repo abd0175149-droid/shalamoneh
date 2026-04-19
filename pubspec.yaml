@@ -41,6 +41,11 @@ dependencies:
     sdk: flutter
   http: ^1.6.0
 
+  # === Firebase (Core + Auth + Push) ===
+  firebase_core: ^3.13.0         # الأساس المشترك
+  firebase_auth: ^5.6.0          # Phone Auth (OTP)
+  firebase_messaging: ^15.2.0    # Push Notifications (للمستقبل)
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

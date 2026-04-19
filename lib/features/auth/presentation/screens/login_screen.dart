@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shalmoneh_app/core/theme/app_colors.dart';
 import 'package:shalmoneh_app/core/constants/app_sizes.dart';
@@ -11,11 +12,12 @@ import 'package:shalmoneh_app/shared_widgets/yellow_button.dart';
 import 'google_sign_in_stub.dart'
     if (dart.library.html) 'google_sign_in_web.dart';
 
-/// شاشة تسجيل الدخول — OTP + Google Sign-In
+/// شاشة تسجيل الدخول — Firebase Phone OTP + Google Sign-In
 class LoginScreen extends ConsumerStatefulWidget {
-  final void Function(String fullPhone, String countryCode, String otp) onSendOTP;
+  final void Function(String fullPhone, String countryCode, String verificationId) onSendOTP;
+  final void Function()? onAutoVerified;
 
-  const LoginScreen({super.key, required this.onSendOTP});
+  const LoginScreen({super.key, required this.onSendOTP, this.onAutoVerified});
 
   @override
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
@@ -47,7 +49,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
-  /// ─── إرسال OTP عبر API ───
+  /// ─── إرسال OTP عبر Firebase ───
   Future<void> _handleSendOTP() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -57,45 +59,43 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         '${_selectedCountry['code']}${_phoneController.text.trim()}';
 
     try {
-      // إرسال OTP عبر Backend API
-      final result = await ref.read(authProvider.notifier).sendOtp(fullPhone);
-
-      if (!mounted) return;
-      setState(() => _isLoading = false);
-
-      // في وضع التطوير: عرض OTP
-      final devOtp = result['otp'] as String?;
-      if (devOtp != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.sms_rounded, color: Colors.white, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '🔐 رمز التحقق: $devOtp  (للتطوير فقط)',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 16,
-                      letterSpacing: 2,
-                    ),
-                  ),
-                ),
-              ],
+      await ref.read(authProvider.notifier).sendOtp(
+        phone: fullPhone,
+        onCodeSent: (verificationId) {
+          if (!mounted) return;
+          setState(() => _isLoading = false);
+          // الانتقال لشاشة OTP مع verificationId
+          widget.onSendOTP(fullPhone, _selectedCountry['code'] as String, verificationId);
+        },
+        onError: (error) {
+          if (!mounted) return;
+          setState(() => _isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(error),
+              backgroundColor: AppColors.error,
             ),
-            backgroundColor: const Color(0xFF2E7D32),
-            duration: const Duration(seconds: 10),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            margin: const EdgeInsets.all(16),
-          ),
-        );
-      }
+          );
+        },
+        onAutoVerified: (PhoneAuthCredential credential) async {
+          // Android فقط — تحقق تلقائي بدون إدخال OTP
+          if (!mounted) return;
+          setState(() => _isLoading = true);
+          final result = await ref.read(authProvider.notifier).autoVerify(credential);
+          if (!mounted) return;
+          setState(() => _isLoading = false);
 
-      widget.onSendOTP(fullPhone, _selectedCountry['code'] as String, devOtp ?? '');
+          if (result.success) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('✅ تم التحقق تلقائياً!'),
+                backgroundColor: AppColors.success,
+              ),
+            );
+            widget.onAutoVerified?.call();
+          }
+        },
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);

@@ -7,6 +7,7 @@ class ApiEndpoints {
   static const String verifyOtp = '/auth/verify-otp';
   static const String refreshToken = '/auth/refresh-token';
   static const String googleAuth = '/auth/google';
+  static const String firebasePhone = '/auth/firebase-phone';
   static const String logout = '/auth/logout';
   static const String profile = '/auth/profile';
 

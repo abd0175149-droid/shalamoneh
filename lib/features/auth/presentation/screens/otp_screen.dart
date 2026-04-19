@@ -7,15 +7,17 @@ import 'package:shalmoneh_app/core/constants/app_sizes.dart';
 import 'package:shalmoneh_app/features/auth/providers/auth_provider.dart';
 import 'package:shalmoneh_app/shared_widgets/yellow_button.dart';
 
-/// شاشة التحقق OTP — 6 حقول + تحقق عبر Backend API
+/// شاشة التحقق OTP — 6 حقول + Firebase Phone Auth
 class OtpScreen extends ConsumerStatefulWidget {
   final String phoneNumber;
+  final String verificationId;
   final VoidCallback onVerified;
   final VoidCallback onBack;
 
   const OtpScreen({
     super.key,
     required this.phoneNumber,
+    required this.verificationId,
     required this.onVerified,
     required this.onBack,
   });
@@ -34,10 +36,12 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
   Timer? _timer;
   bool _canResend = false;
   String? _errorMessage;
+  late String _currentVerificationId;
 
   @override
   void initState() {
     super.initState();
+    _currentVerificationId = widget.verificationId;
     _startTimer();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusNodes[0].requestFocus();
@@ -95,7 +99,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
     }
   }
 
-  /// ─── التحقق عبر Backend API ───
+  /// ─── التحقق عبر Firebase → Backend JWT ───
   Future<void> _verifyOTP() async {
     if (_isLoading) return;
 
@@ -109,7 +113,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
 
     try {
       final result = await ref.read(authProvider.notifier).verifyOtp(
-        widget.phoneNumber,
+        _currentVerificationId,
         enteredCode,
       );
 
@@ -127,7 +131,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
       if (!mounted) return;
       setState(() {
         _isLoading = false;
-        _errorMessage = 'خطأ في الاتصال بالسيرفر';
+        _errorMessage = 'رمز التحقق غير صحيح';
       });
       _clearFields();
     }
@@ -171,46 +175,55 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
     }
   }
 
-  /// ─── إعادة إرسال OTP عبر API ───
+  /// ─── إعادة إرسال OTP عبر Firebase ───
   void _resendOTP() async {
     if (!_canResend) return;
 
     try {
-      final result = await ref.read(authProvider.notifier).sendOtp(widget.phoneNumber);
-      _startTimer();
-      _clearFields();
-      setState(() => _errorMessage = null);
+      await ref.read(authProvider.notifier).sendOtp(
+        phone: widget.phoneNumber,
+        onCodeSent: (verificationId) {
+          if (!mounted) return;
+          // تحديث verificationId الجديد
+          setState(() {
+            _currentVerificationId = verificationId;
+            _errorMessage = null;
+          });
+          _startTimer();
+          _clearFields();
 
-      final devOtp = result['otp'] as String?;
-      if (devOtp != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.sms_rounded, color: Colors.white, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '🔐 الرمز الجديد: $devOtp  (للتطوير)',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 16,
-                      letterSpacing: 2,
-                    ),
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Row(
+                children: [
+                  Icon(Icons.sms_rounded, color: Colors.white, size: 20),
+                  SizedBox(width: 8),
+                  Text(
+                    '📩 تم إرسال رمز جديد',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
                   ),
-                ),
-              ],
+                ],
+              ),
+              backgroundColor: const Color(0xFF2E7D32),
+              duration: const Duration(seconds: 3),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              margin: const EdgeInsets.all(16),
             ),
-            backgroundColor: const Color(0xFF2E7D32),
-            duration: const Duration(seconds: 10),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+          );
+        },
+        onError: (error) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('خطأ في إعادة الإرسال: $error'),
+              backgroundColor: AppColors.error,
             ),
-            margin: const EdgeInsets.all(16),
-          ),
-        );
-      }
+          );
+        },
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
