@@ -26,6 +26,9 @@ COPY --from=build /app/bin/server /app/bin/server
 # Admin panel static files
 COPY admin/ /app/admin/
 
+# Flutter Web App static files
+COPY web/ /app/web/
+
 EXPOSE 4050
 
 ENV PORT=4050

@@ -181,9 +181,19 @@ void main(List<String> args) async {
   //  Admin Panel (Static Files)
   // ══════════════════════════════════════════
   final adminDir = Directory('admin');
-  Handler? staticHandler;
+  Handler? adminHandler;
   if (adminDir.existsSync()) {
-    staticHandler = createStaticHandler('admin', defaultDocument: 'index.html');
+    adminHandler = createStaticHandler('admin', defaultDocument: 'index.html');
+  }
+
+  // ══════════════════════════════════════════
+  //  Flutter Web App (Static Files)
+  // ══════════════════════════════════════════
+  final webDir = Directory('web');
+  Handler? webHandler;
+  if (webDir.existsSync()) {
+    webHandler = createStaticHandler('web', defaultDocument: 'index.html');
+    print('📱 Flutter Web App found at /web directory');
   }
 
   // Pipeline
@@ -191,11 +201,23 @@ void main(List<String> args) async {
       .addMiddleware(logRequests())
       .addMiddleware(corsHeaders())
       .addHandler((Request request) {
-    // Admin panel static files
-    if (request.url.path.startsWith('admin') && staticHandler != null) {
-      final subPath = request.url.path.replaceFirst('admin', '').replaceFirst('/', '');
-      return staticHandler!(request.change(path: 'admin'));
+    final path = request.url.path;
+
+    // API routes → Router
+    if (path.startsWith('api/') || path == 'api') {
+      return router.call(request);
     }
+
+    // Admin panel → /admin/
+    if (path.startsWith('admin') && adminHandler != null) {
+      return adminHandler!(request.change(path: 'admin'));
+    }
+
+    // Flutter Web App → كل شيء آخر
+    if (webHandler != null) {
+      return webHandler!(request);
+    }
+
     return router.call(request);
   });
 
@@ -208,6 +230,7 @@ void main(List<String> args) async {
   print('  📍 http://localhost:${server.port}');
   print('  📋 Health: http://localhost:${server.port}/api/health');
   print('  🛠 Admin:  http://localhost:${server.port}/admin/');
+  print('  📱 Web:    http://localhost:${server.port}/');
   print('  🐘 DB: ${EnvConfig.dbHost}:${EnvConfig.dbPort}/${EnvConfig.dbName}');
   print('  📱 SMS: ${EnvConfig.isTwilioConfigured ? "Twilio ✅" : "Dev Mode (Console) ⚠️"}');
   print('═══════════════════════════════════════════════');

@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shalmoneh_app/core/network/api_exceptions.dart';
 import 'package:shalmoneh_app/core/network/api_response.dart';
@@ -7,12 +6,8 @@ import 'package:shalmoneh_app/core/network/api_response.dart';
 /// API Client — الربط مع Backend
 /// يدعم: GET, POST, PUT, DELETE مع JWT Auth
 class ApiClient {
-  // في التطوير المحلي
-  static const String _devBaseUrl = 'http://localhost:4050/api';
-  // في الإنتاج — عبر Cloudflare Tunnel
-  static const String _prodBaseUrl = 'https://shalamoneh.grade.sbs/api';
-
-  static String get baseUrl => kDebugMode ? _devBaseUrl : _prodBaseUrl;
+  // السيرفر الإنتاجي — عبر Cloudflare Tunnel
+  static const String baseUrl = 'https://shalamoneh.grade.sbs/api';
 
   String? _token;
 
