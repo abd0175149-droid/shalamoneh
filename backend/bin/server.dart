@@ -200,6 +200,7 @@ void main(List<String> args) async {
   final handler = Pipeline()
       .addMiddleware(logRequests())
       .addMiddleware(corsHeaders())
+      .addMiddleware(_addSecurityHeaders())
       .addHandler((Request request) {
     final path = request.url.path;
 
@@ -235,4 +236,17 @@ void main(List<String> args) async {
   print('  📱 SMS: ${EnvConfig.isTwilioConfigured ? "Twilio ✅" : "Dev Mode (Console) ⚠️"}');
   print('═══════════════════════════════════════════════');
   print('');
+}
+
+/// Middleware لإضافة security headers
+/// COOP: same-origin-allow-popups → ضروري لـ Google Sign-In popup
+Middleware _addSecurityHeaders() {
+  return (Handler innerHandler) {
+    return (Request request) async {
+      final response = await innerHandler(request);
+      return response.change(headers: {
+        'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
+      });
+    };
+  };
 }
