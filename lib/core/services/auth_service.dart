@@ -91,30 +91,11 @@ class AuthService {
   //  Google Auth
   // ══════════════════════════════════════════
 
-  /// تسجيل الدخول عبر Google
-  Future<AuthResult> signInWithGoogle(
-    String token, {
-    bool isAccessToken = false,
-    String? displayName,
-    String? email,
-    String? photoUrl,
-  }) async {
-    final body = <String, dynamic>{};
-
-    if (isAccessToken) {
-      // على الويب: نرسل accessToken + بيانات الحساب
-      body['access_token'] = token;
-      if (displayName != null) body['name'] = displayName;
-      if (email != null) body['email'] = email;
-      if (photoUrl != null) body['avatar_url'] = photoUrl;
-    } else {
-      // على الموبايل: نرسل idToken فقط
-      body['id_token'] = token;
-    }
-
+  /// تسجيل الدخول عبر Google — يرسل id_token من GIS One Tap
+  Future<AuthResult> signInWithGoogle(String idToken) async {
     final response = await apiClient.post(
       ApiEndpoints.googleAuth,
-      body: body,
+      body: {'id_token': idToken},
     );
 
     if (response.success && response.data != null) {

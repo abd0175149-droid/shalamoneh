@@ -21,53 +21,8 @@
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
-  <!-- Google Identity Services -->
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
-
-  <script>
-    // Google Sign-In عبر GIS One Tap — يستدعى من Flutter/Dart
-    function triggerGoogleSignIn() {
-      return new Promise(function(resolve, reject) {
-        if (!window.google || !google.accounts || !google.accounts.id) {
-          reject('Google Identity Services not loaded');
-          return;
-        }
-
-        google.accounts.id.initialize({
-          client_id: '13399553146-5cj2lbtq691ompj8sejjfm4qk2eqk0t5.apps.googleusercontent.com',
-          callback: function(response) {
-            if (response.credential) {
-              resolve(response.credential);
-            } else {
-              reject('No credential received');
-            }
-          },
-          auto_select: false
-        });
-
-        // عرض One Tap prompt
-        google.accounts.id.prompt(function(notification) {
-          if (notification.isNotDisplayed()) {
-            var reason = notification.getNotDisplayedReason();
-            console.log('One Tap not displayed:', reason);
-            // Fallback: فتح صفحة Google login عبر redirect
-            var redirectUrl = 'https://accounts.google.com/o/oauth2/v2/auth'
-              + '?client_id=13399553146-5cj2lbtq691ompj8sejjfm4qk2eqk0t5.apps.googleusercontent.com'
-              + '&redirect_uri=' + encodeURIComponent(window.location.origin)
-              + '&response_type=id_token'
-              + '&scope=openid email profile'
-              + '&nonce=' + Math.random().toString(36).substr(2)
-              + '&prompt=select_account';
-            window.location.href = redirectUrl;
-          } else if (notification.isSkippedMoment()) {
-            console.log('One Tap skipped:', notification.getSkippedReason());
-            reject('User skipped Google One Tap');
-          }
-        });
-      });
-    }
-  </script>
-
+  <!-- Google Identity Services — يُحمّل قبل Flutter -->
+  <script src="https://accounts.google.com/gsi/client"></script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
