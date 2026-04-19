@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shalmoneh_app/core/theme/app_colors.dart';
 import 'package:shalmoneh_app/core/constants/app_sizes.dart';
 import 'package:shalmoneh_app/features/auth/providers/auth_provider.dart';
@@ -103,29 +104,68 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
-  /// ─── تسجيل Google (placeholder حتى يتم ضبط Client ID) ───
+  /// ─── تسجيل Google Sign-In الحقيقي ───
   Future<void> _handleGoogleSignIn() async {
     setState(() => _isGoogleLoading = true);
 
     try {
-      // TODO: ضبط google_sign_in package مع Client ID
-      // سيتم تفعيله بعد إنشاء مشروع Google Cloud Console
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('تسجيل Google قيد الإعداد — سيتم تفعيله قريباً'),
-          backgroundColor: AppColors.warning,
-        ),
+      // إنشاء GoogleSignIn instance
+      // ملاحظة: للويب يحتاج Client ID في index.html
+      final googleSignIn = GoogleSignIn(
+        scopes: ['email', 'profile'],
       );
+
+      // فتح نافذة Google
+      final account = await googleSignIn.signIn();
+
+      if (account == null) {
+        // المستخدم ألغى التسجيل
+        if (mounted) setState(() => _isGoogleLoading = false);
+        return;
+      }
+
+      // الحصول على ID Token
+      final auth = await account.authentication;
+      final idToken = auth.idToken;
+
+      if (idToken == null) {
+        throw Exception('لم يتم الحصول على Google Token');
+      }
+
+      // إرسال Token للـ Backend
+      final result = await ref.read(authProvider.notifier).signInWithGoogle(idToken);
+
+      if (!mounted) return;
+      setState(() => _isGoogleLoading = false);
+
+      if (result.success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result.message),
+            backgroundColor: AppColors.success,
+          ),
+        );
+        // الانتقال يتم تلقائياً عبر AuthGate
+        if (result.isNewUser) {
+          widget.onSendOTP('', '', ''); // trigger navigation
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result.message),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
+      setState(() => _isGoogleLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('خطأ في Google: $e'),
           backgroundColor: AppColors.error,
         ),
       );
-    } finally {
-      if (mounted) setState(() => _isGoogleLoading = false);
     }
   }
 
