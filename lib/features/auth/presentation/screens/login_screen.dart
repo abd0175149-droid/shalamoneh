@@ -1,7 +1,9 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_sign_in/google_sign_in.dart';
+import 'dart:js' as js;
 import 'package:shalmoneh_app/core/theme/app_colors.dart';
 import 'package:shalmoneh_app/core/constants/app_sizes.dart';
 import 'package:shalmoneh_app/features/auth/providers/auth_provider.dart';
@@ -104,44 +106,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
-  /// ─── تسجيل Google Sign-In الحقيقي ───
+  /// ─── تسجيل Google Sign-In عبر GIS (بدون popup) ───
   Future<void> _handleGoogleSignIn() async {
     setState(() => _isGoogleLoading = true);
 
     try {
-      final googleSignIn = GoogleSignIn(
-        scopes: ['email', 'profile'],
-      );
+      // استخدام JavaScript interop لاستدعاء GIS مباشرة
+      // هذا يتجنب مشكلة COOP لأنه يستخدم redirect بدل popup
+      final idToken = await _callGoogleOneTap();
 
-      // فتح نافذة Google
-      final account = await googleSignIn.signIn();
-
-      if (account == null) {
+      if (idToken == null) {
         if (mounted) setState(() => _isGoogleLoading = false);
         return;
       }
 
-      // الحصول على tokens
-      final auth = await account.authentication;
-
-      // على الويب: idToken يكون null — نستخدم accessToken بدله
-      final token = auth.idToken ?? auth.accessToken;
-
-      if (token == null) {
-        throw Exception('لم يتم الحصول على Google Token');
-      }
-
-      // تحديد نوع التوكن
-      final isAccessToken = auth.idToken == null;
-
-      // إرسال Token + بيانات الحساب للـ Backend
-      final result = await ref.read(authProvider.notifier).signInWithGoogle(
-        token,
-        isAccessToken: isAccessToken,
-        displayName: account.displayName,
-        email: account.email,
-        photoUrl: account.photoUrl,
-      );
+      // إرسال idToken للـ Backend
+      final result = await ref.read(authProvider.notifier).signInWithGoogle(idToken);
 
       if (!mounted) return;
       setState(() => _isGoogleLoading = false);
@@ -171,6 +151,57 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         ),
       );
     }
+  }
+
+  /// استدعاء Google Identity Services One Tap عبر JS
+  Future<String?> _callGoogleOneTap() async {
+    if (!kIsWeb) return null;
+
+    final completer = Completer<String?>();
+
+    // تعريف callback function في JavaScript
+    js.context['_handleGoogleCredentialResponse'] = js.JsFunction.withThis((_, jsResponse) {
+      final credential = jsResponse['credential'] as String?;
+      if (!completer.isCompleted) {
+        completer.complete(credential);
+      }
+    });
+
+    // استدعاء GIS initialize + prompt
+    js.context.callMethod('eval', ['''
+      if (window.google && google.accounts && google.accounts.id) {
+        google.accounts.id.initialize({
+          client_id: '13399553146-5cj2lbtq691ompj8sejjfm4qk2eqk0t5.apps.googleusercontent.com',
+          callback: window._handleGoogleCredentialResponse,
+          auto_select: false
+        });
+        google.accounts.id.prompt(function(notification) {
+          if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+            // One Tap لم يظهر — نستخدم redirect flow
+            google.accounts.id.renderButton(
+              document.createElement('div'),
+              { theme: 'outline', size: 'large' }
+            );
+            // Fallback: فتح OAuth redirect
+            var url = 'https://accounts.google.com/o/oauth2/v2/auth'
+              + '?client_id=13399553146-5cj2lbtq691ompj8sejjfm4qk2eqk0t5.apps.googleusercontent.com'
+              + '&redirect_uri=' + encodeURIComponent(window.location.origin)
+              + '&response_type=token'
+              + '&scope=email profile'
+              + '&prompt=select_account';
+            window.location.href = url;
+          }
+        });
+      } else {
+        console.error('Google Identity Services not loaded');
+      }
+    ''']);
+
+    // انتظار الاستجابة (مع timeout)
+    return completer.future.timeout(
+      const Duration(seconds: 60),
+      onTimeout: () => null,
+    );
   }
 
   @override
