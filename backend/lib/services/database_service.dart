@@ -145,9 +145,16 @@ class DatabaseService {
     // إنشاء مستخدم جديد
     final id = generateId();
     await _conn.execute(
-      Sql.named('''INSERT INTO users (id, email, name, google_id, avatar_url, auth_provider)
-        VALUES (@id::uuid, @email, @name, @google_id, @avatar_url, 'google')'''),
-      parameters: {'id': id, 'email': email, 'name': name, 'google_id': googleId, 'avatar_url': avatarUrl},
+      Sql.named('''INSERT INTO users (id, phone, email, name, google_id, avatar_url, auth_provider)
+        VALUES (@id::uuid, @phone, @email, @name, @google_id, @avatar_url, 'google')'''),
+      parameters: {
+        'id': id,
+        'phone': 'google_$googleId', // phone مطلوب (NOT NULL) — نستخدم معرف فريد
+        'email': email,
+        'name': name,
+        'google_id': googleId,
+        'avatar_url': avatarUrl,
+      },
     );
 
     // مكافأة تسجيل جديد
