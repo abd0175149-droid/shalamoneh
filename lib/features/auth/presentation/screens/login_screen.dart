@@ -158,14 +158,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (!kIsWeb) return null;
 
     try {
-      // استدعاء JS function — تعرض Google One Tap داخل الصفحة
-      final promise = js.context.callMethod('triggerGoogleSignIn', []);
+      // تحقق أن الدالة موجودة
+      final hasFunc = js.context.hasProperty('triggerGoogleSignIn');
+      if (!hasFunc) {
+        debugPrint('triggerGoogleSignIn not found in window');
+        throw Exception('Google Sign-In غير متاح حالياً. حاول مرة أخرى.');
+      }
+
+      // استدعاء JS function
+      final result = js.context.callMethod('triggerGoogleSignIn', []);
+
+      if (result == null) {
+        throw Exception('Google Sign-In لم يعمل. تأكد من تحميل الصفحة كاملة.');
+      }
+
       // تحويل JS Promise لـ Dart Future
-      final credential = await promiseToFuture<String?>(promise);
+      final credential = await promiseToFuture<String>(result);
       return credential;
     } catch (e) {
       debugPrint('Google One Tap error: $e');
-      return null;
+      rethrow;
     }
   }
 
