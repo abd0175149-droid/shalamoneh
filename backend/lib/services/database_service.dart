@@ -734,7 +734,12 @@ class DatabaseService {
     final map = <String, dynamic>{};
     for (var i = 0; i < schema.columns.length; i++) {
       final colName = schema.columns[i].columnName ?? 'col_$i';
-      map[colName] = row[i];
+      var value = row[i];
+      // تحويل DateTime لـ ISO string (JSON لا يدعم DateTime مباشرة)
+      if (value is DateTime) {
+        value = value.toIso8601String();
+      }
+      map[colName] = value;
     }
     return map;
   }
