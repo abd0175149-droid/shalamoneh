@@ -22,10 +22,9 @@ WORKDIR /app
 
 # Copy compiled binary
 COPY --from=build /app/bin/server /app/bin/server
-COPY --from=build /app/.env /app/.env
 
 # Admin panel static files
-COPY --from=build /app/admin/ /app/admin/
+COPY admin/ /app/admin/
 
 EXPOSE 4050
 
